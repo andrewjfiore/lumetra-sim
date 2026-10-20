@@ -114,6 +114,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .big > i { display: grid; place-items: center; color: var(--w-dim); }
 .big > i svg { width: 24px; height: 24px; }
 .big span { display: block; font-size: 11px; color: var(--w-dim); line-height: 1.2; }
+.big > div { min-width: 0; }
+#film-ei { white-space: normal; font-size: 16px; line-height: 1.2; }
 .big b { display: block; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; line-height: 1.15; white-space: nowrap; }
 .big b small { font-size: 12px; font-weight: 500; color: var(--w-dim); margin: 0 5px; }
 .big.stepper { grid-template-columns: 1fr auto auto; padding-left: 12px; }
@@ -176,6 +178,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 @keyframes nope { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
 .row.err, .srow.err { animation: nope 320ms ease-out; box-shadow: inset 0 0 0 1.5px var(--c-err); }
 @media (prefers-reduced-motion: reduce) { .row.err, .srow.err { animation: none; } }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .whint { position: absolute; left: 8%; right: 8%; bottom: 2%; font-size: 11px; color: var(--w-dim); text-align: center; pointer-events: none; text-shadow: 0 0 6px #000, 0 0 3px #000; }
 .watch-note { font-size: 13px; color: var(--muted); text-align: center; max-width: 36ch; margin: 0; }
 .legend .ringkey { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ok); vertical-align: middle; margin-right: 6px; }
@@ -595,13 +598,18 @@ function buildWatch() {
       <button class="lock" id="l-${d}"></button></div>`).join("")}
     <div class="row"><span class="ico" id="sky-ico"></span>
       <div class="strip" id="s-sky" data-d="sky" tabindex="0" role="slider" aria-label="Sky">${skyHTML(c.isDay, lastLive)}</div><span></span></div>
-  </div><div class="whint" id="whint" aria-live="polite"></div></section>
+  </div><div class="whint" id="whint" aria-live="polite"></div><div class="sr" id="wsr" aria-live="assertive"></div></section>
   ${pagesHTML()}`;
   if (!$("pdots")) {
     const dots = document.createElement("div"); dots.className = "pdots"; dots.id = "pdots";
     dots.innerHTML = PAGES.map((p, i) => `<button data-pg="${i}" aria-label="${p.name} page"></button>`).join("");
     document.querySelector(".screen").appendChild(dots);
-    dots.querySelectorAll("button").forEach(b => b.onclick = () => $("view").scrollTo({ top: +b.dataset.pg * $("view").clientHeight, behavior: "smooth" }));
+    dots.querySelectorAll("button").forEach(b => b.onclick = e => {
+      const i = +b.dataset.pg, pg = $("pg-" + i), v = $("view");
+      const keyboard = e.detail === 0;
+      v.scrollTo({ top: i * v.clientHeight, behavior: keyboard ? "auto" : "smooth" });
+      if (keyboard && pg) { syncPage(); pg.tabIndex = -1; pg.focus({ preventScroll: true }); }
+    });
     $("view").addEventListener("scroll", () => { syncPage(); }, { passive: true });
   }
   buildSettings();
@@ -614,23 +622,28 @@ function curIdx(d) { return d === "sky" ? SKIES.findIndex(s => s.id === st.sky) 
 // Move dial d to item i if the meter allows it
 function choose(d, i) {
   if (d === "sky") { st.sky = SKIES[i].id; st.skyTouched = true; rebalance(); return; }
-  if (st.locks[d]) { if (!(d === "iso" && st.film.on)) flash("Double tap to unlock"); nope(d); return; }
+  if (st.locks[d]) { if (!(d === "iso" && st.film.on)) flash("Double tap to unlock"); else say("ISO follows the Film page."); nope(d); return; }
   turn(d, fromIdx(d, i) - st.dials[d]);
-  if (st.hint) { nope(d); st.hint = ""; }
+  if (st.hint) { nope(d); say(st.hint); st.hint = ""; }
 }
+function say(msg) { const el = $("wsr"); if (!el) return; el.textContent = ""; setTimeout(() => { el.textContent = msg; }, 30); }
 function step(d, dir) {
   const i = Math.max(0, Math.min(maxIdx(d), curIdx(d) + dir));
-  if (i !== curIdx(d)) choose(d, i); else nope(d);
+  if (i !== curIdx(d)) choose(d, i); else { nope(d); say("End of the dial."); }
   renderAll();
 }
 function wireStrip(el) {
   const d = el.dataset.d;
   let timer = null, last = 0;
+  const touched = () => { el._user = true; };
+  el.addEventListener("pointerdown", touched, { passive: true });
+  el.addEventListener("touchstart", touched, { passive: true });
   el.addEventListener("scroll", () => {
     clearTimeout(timer);
     timer = setTimeout(() => {
-      if (el._target != null && Math.abs(el.scrollLeft - el._target) < 3) { el._target = null; return; }
       el._target = null;
+      if (!el._user) return;
+      el._user = false;
       const i = Math.max(0, Math.min(maxIdx(d), Math.round(el.scrollLeft / IW)));
       if (i !== curIdx(d)) choose(d, i);
       renderAll();
@@ -722,6 +735,7 @@ function pagesHTML() {
 function syncPage() {
   const v = $("view"); page = Math.round(v.scrollTop / Math.max(1, v.clientHeight));
   document.querySelectorAll("#pdots button").forEach((b, i) => b.setAttribute("aria-current", i === page));
+  document.querySelectorAll("#view .page").forEach((pg, i) => { pg.inert = i !== page; });
   const p = PAGES[page] || PAGES[0];
   $("wleft").innerHTML = page === 0 ? $("wleft").dataset.ev : `<span class="evb ${p.tint || ""}" style="${p.tint ? "" : "color:var(--w-fg)"}">${p.icon()}${p.name}</span>`;
 }
@@ -849,7 +863,7 @@ function syncFilm() {
   $("film-word").textContent = f.on ? "On" : "Off";
   $("v-box").textContent = "ISO " + LM.ISOS[f.box];
   const spill = filmSpill();
-  $("film-ei").textContent = "EI " + LM.ISOS[filmEI()] + (spill ? `, then ${spill < 0 ? "open up" : "stop down"} ${thirds(spill)} ${Math.abs(spill) === 3 ? "stop" : "stops"}` : "");
+  $("film-ei").textContent = "EI " + LM.ISOS[filmEI()] + (spill ? `, then ${spill < 0 ? "open up" : "stop down"} ${thirds(spill)} ${Math.abs(spill) <= 3 ? "stop" : "stops"}` : "");
   $("v-push").textContent = f.push === 0 ? "Box speed" : (f.push > 0 ? "Push +" : "Pull −") + thirds(f.push);
   $("v-years").textContent = f.years === 0 ? "In date" : f.years + (f.years === 1 ? " year" : " years");
   $("film-store").textContent = STORAGE.find(x => x.id === f.storage).name;
@@ -983,7 +997,7 @@ function setMode(m) {
     Object.assign(st, st.manualSnap); clearInterval(clockTimer);
     $("lat").value = st.lat; $("lon").value = st.lon; $("date").value = st.date; $("time").value = st.time; fillTz();
   }
-  if (m === "gps" && st.fix) { lastFetchKey = ""; fetchWeather(); }
+  if (m === "gps" && st.fix) { lastFetchKey = ""; if (st.track) { st.mode = m; useTrackPoint(st.trackIdx); } else fetchWeather(); }
   st.mode = m;
   $("m-gps").setAttribute("aria-pressed", m === "gps"); $("m-man").setAttribute("aria-pressed", m === "man");
   $("gps-pane").hidden = m !== "gps"; $("man-pane").hidden = m !== "man";
@@ -1024,7 +1038,7 @@ $("gpx").onchange = async e => {
     if (!pts.length) throw new Error("no points");
     st.track = pts; st.fix = true; st.follow = false; clearInterval(clockTimer);
     $("track").max = pts.length - 1; $("track").value = pts.length - 1; $("track-row").hidden = false;
-    gpsStatus(`${pts.length} points. Drag the track slider to move along it.`, true);
+    gpsStatus(`${pts.length} points. Drag the track slider to move along it.`, true); syncSettings();
     useTrackPoint(pts.length - 1);
   } catch { gpsStatus("That file has no GPS points. Export the track from GPS Trace as GPX and try again.", false); }
 };
