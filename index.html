@@ -124,8 +124,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .big.err { animation: nope 320ms ease-out; box-shadow: inset 0 0 0 1.5px var(--c-err); }
 @media (prefers-reduced-motion: reduce) { .big.err { animation: none; } }
 .pdots { gap: 0; right: 0.5%; }
-.pdots button { width: 18px; height: 13px; background: none; position: relative; border-radius: 0; }
-.pdots button::before { content: ""; position: absolute; left: 6px; top: 4px; width: 5px; height: 5px; border-radius: 50%; background: #4a4c47; }
+.pdots button { width: 22px; height: 16px; background: none; position: relative; border-radius: 0; }
+.pdots button::before { content: ""; position: absolute; left: 8px; top: 5px; width: 5px; height: 5px; border-radius: 50%; background: #4a4c47; }
 .pdots button[aria-current="true"] { height: 18px; background: none; }
 .pdots button[aria-current="true"]::before { height: 10px; border-radius: 3px; background: var(--w-fg); }
 .sreset { background: none; border: 0; color: var(--w-accent); font: 600 12px inherit; font-family: inherit; cursor: pointer; padding: 6px; }
@@ -133,7 +133,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 
 .rows { display: grid; gap: 4px; flex: 1; grid-auto-rows: minmax(40px, 1fr); }
 .row {
-  display: grid; grid-template-columns: 36px 1fr 28px; align-items: center; gap: 4px;
+  display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 4px;
   background: var(--w-tile); border-radius: 12px; padding: 2px 3px 2px 2px; min-height: 40px;
 }
 .ico { display: grid; justify-items: center; gap: 2px; color: var(--w-dim); }
@@ -149,7 +149,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
           mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
 }
 .strip::-webkit-scrollbar { display: none; }
-.strip:focus-visible { box-shadow: inset 0 0 0 2px var(--w-accent); }
+.strip:focus-visible { box-shadow: none; }
+.row:has(.strip:focus-visible) { outline: 2px solid var(--w-accent); outline-offset: 1px; }
 .strip.locked { overflow-x: hidden; cursor: pointer; touch-action: manipulation; }
 .strip .pad { flex: 0 0 calc(50% - 32px); }
 .it {
@@ -157,7 +158,11 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
   font-variant-numeric: tabular-nums; white-space: nowrap; transition: color 120ms, font-size 120ms; user-select: none; cursor: pointer;
 }
 .it.on { color: var(--w-fg); font-size: 24px; }
+.it.long { font-size: 13px; }
+.it.long.on { font-size: 18px; }
 .strip.solve .it.on { color: var(--w-accent); }
+.row { position: relative; }
+.strip.solve + .lock::before { content: "AUTO"; position: absolute; right: 40px; top: 3px; font-size: 7.5px; font-weight: 700; letter-spacing: 0.08em; color: var(--w-accent); }
 .it.sky { display: grid; justify-items: center; gap: 1px; font-size: 8.5px; font-weight: 500; line-height: 1.1; white-space: normal; }
 .it.sky svg { width: 24px; height: 24px; }
 .tint-sun { color: var(--c-sun); }
@@ -168,8 +173,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .it.sky .ring { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; }
 .it.sky.live .ring { box-shadow: 0 0 0 2px var(--w-live); }
 .it.sky.on { font-size: 9px; color: var(--w-fg); }
-.lock { background: none; border: 0; color: var(--w-dim); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }
-.lock svg { width: 15px; height: 15px; }
+.lock { background: none; border: 0; color: var(--w-dim); width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.lock svg { width: 17px; height: 17px; }
 .lock[aria-pressed="true"] { color: var(--w-fg); background: #33342f; }
 .lock:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
 .evb { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
@@ -291,6 +296,7 @@ svg.chart { display: block; width: 100%; min-width: 520px; height: auto; cursor:
         </div>
         <p class="status" id="wx-status" hidden></p>
         <div class="readout">
+          <div><span>Time zone</span><b id="r-tz">--</b></div>
           <div><span>Sunrise</span><b id="r-rise">--</b></div>
           <div><span>Sunset</span><b id="r-set">--</b></div>
           <div><span>Sun elevation</span><b id="r-elev">--</b></div>
@@ -380,7 +386,7 @@ const LM = (() => {
   function shutterLabel(k) {
     if (k >= -15) return LABELS[k + 15];
     const t = Math.pow(2, -k / 3);
-    return t < 100 ? `~${Math.round(t)} s` : `~${Math.round(t / 60)} min`;
+    return t < 600 ? `~${Math.round(t)} s` : `~${Math.round(t / 60)} min`;
   }
   // Balance: fIdx + k = 3 * EV100 + isoIdx - 6. Returns the free dial's new index and any leftover thirds.
   const FULL = { shutter: [K_MIN, K_MAX], f: [0, APERTURES.length - 1], iso: [0, ISOS.length - 1] };
@@ -481,8 +487,10 @@ try {
   if (saved && saved.locks) Object.assign(st.locks, saved.locks);
   if (saved && saved.film) Object.assign(st.film, saved.film);
   if (saved && saved.dials) for (const d of ["shutter", "f", "iso"]) if (Number.isFinite(saved.dials[d])) st.dials[d] = saved.dials[d];
+  if (saved && saved.place && Number.isFinite(saved.place.lat)) Object.assign(st, { lat: saved.place.lat, lon: saved.place.lon, tz: saved.place.tz || st.tz });
+  if (saved && saved.mode === "gps") st.resumeGps = true;
 } catch {}
-function save() { try { localStorage.setItem("lumetra-sim", JSON.stringify({ limits: st.limits, locks: st.locks, film: st.film, dials: st.dials })); } catch {} }
+function save() { try { localStorage.setItem("lumetra-sim", JSON.stringify({ limits: st.limits, locks: st.locks, film: st.film, dials: st.dials, mode: st.mode, place: st.mode === "gps" ? st.manualSnap : { lat: st.lat, lon: st.lon, tz: st.tz } })); } catch {} }
 function clampDials() {
   for (const d of ["shutter", "f", "iso"]) { const [lo, hi] = st.limits[d]; st.dials[d] = Math.max(lo, Math.min(hi, st.dials[d])); }
   if (st.film.on) { st.dials.iso = filmEI(); st.locks.iso = true; }
@@ -585,7 +593,7 @@ function nope(d) {
 const TINT = { sun: "sun", sunsmall: "sun", sunpart: "sun", moon: "moon", moonsmall: "moon", moonpart: "moon", cloud: "cloud", clouds: "cloud", fog: "cloud", haze: "cloud", drizzle: "wet", rain: "wet", snow: "moon", storm: "wet" };
 const skyTint = (id, isDay) => { const s = SKIES.find(x => x.id === id); return "tint-" + TINT[isDay ? s.di : s.ni]; };
 function stripHTML(d) {
-  return `<span class="pad"></span>` + items(d).map((t, i) => `<span class="it" data-i="${i}">${t}</span>`).join("") + `<span class="pad"></span>`;
+  return `<span class="pad"></span>` + items(d).map((t, i) => `<span class="it${t.length > 5 ? " long" : ""}" data-i="${i}">${t}</span>`).join("") + `<span class="pad"></span>`;
 }
 function skyHTML(isDay, liveId) {
   return `<span class="pad"></span>` + SKIES.map((s, i) => `<span class="it sky${liveId === s.id ? " live" : ""}" data-i="${i}"${liveId === s.id ? ' title="Live weather now"' : ""}><span class="ring ${"tint-" + TINT[isDay ? s.di : s.ni]}">${SKY[isDay ? s.di : s.ni]}</span>${isDay ? s.day : s.night}</span>`).join("") + `<span class="pad"></span>`;
@@ -636,6 +644,15 @@ function wireStrip(el) {
   const d = el.dataset.d;
   let timer = null, last = 0;
   const touched = () => { el._user = true; };
+  const ico = el.parentElement.querySelector(".ico");
+  if (ico) {
+    let x0 = null, s0 = 0;
+    ico.style.touchAction = "none"; ico.style.cursor = "grab";
+    ico.addEventListener("pointerdown", e => { x0 = e.clientX; s0 = el.scrollLeft; el._user = true; ico.setPointerCapture(e.pointerId); });
+    ico.addEventListener("pointermove", e => { if (x0 != null) el.scrollLeft = s0 - (e.clientX - x0); });
+    const end = () => { if (x0 == null) return; x0 = null; el.scrollTo({ left: Math.round(el.scrollLeft / IW) * IW, behavior: "smooth" }); };
+    ico.addEventListener("pointerup", end); ico.addEventListener("pointercancel", end);
+  }
   el.addEventListener("pointerdown", touched, { passive: true });
   el.addEventListener("touchstart", touched, { passive: true });
   el.addEventListener("scroll", () => {
@@ -656,7 +673,11 @@ function wireStrip(el) {
     step(d, (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) > 0 ? 1 : -1);
   }, { passive: false });
   el.addEventListener("keydown", e => {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); step(d, e.key === "ArrowRight" ? 1 : -1); }
+    const k = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1, PageUp: 3, PageDown: -3, Home: -999, End: 999 }[e.key];
+    if (k == null) return;
+    e.preventDefault();
+    if (Math.abs(k) === 999) { const i = k > 0 ? maxIdx(d) : 0; if (i !== curIdx(d)) choose(d, i); else nope(d); renderAll(); }
+    else step(d, k);
   });
   let lastTap = 0;
   el.addEventListener("click", e => {
@@ -774,7 +795,17 @@ function renderSun(c) {
   $("pb-now").innerHTML = tile(ICON.sunhalf, "tint-sun", "Height", `${now.h.toFixed(1)}°`) + tile(ICON.f, "ico f", "Direction", `${compass(now.az)} ${now.az.toFixed(0)}°`) + tile(SKY.sun, "tint-sun", "Highest today", `${max.toFixed(0)}°<small>at</small>${hhmm(noon)}`);
 }
 
+/* Hold any stepper button to repeat it */
+document.addEventListener("pointerdown", e => {
+  const btn = e.target.closest("[data-film], [data-lim]"); if (!btn) return;
+  let rep = null;
+  const delay = setTimeout(() => { rep = setInterval(() => btn.click(), 90); }, 400);
+  const stop = () => { clearTimeout(delay); clearInterval(rep); window.removeEventListener("pointerup", stop); window.removeEventListener("pointercancel", stop); btn.removeEventListener("pointerleave", stop); };
+  window.addEventListener("pointerup", stop); window.addEventListener("pointercancel", stop); btn.addEventListener("pointerleave", stop);
+});
+
 /* Settings pages */
+const LIMIT_WORDS = { shutter: ["longer", "shorter"], f: ["wider", "narrower"], iso: ["lower", "higher"] };
 const LIMIT_ROWS = [
   ["shutter", 0, "Slowest"], ["shutter", 1, "Fastest"],
   ["f", 0, "Widest"], ["f", 1, "Narrowest"],
@@ -786,7 +817,7 @@ function buildSettings() {
   for (const d of DIALS) {
     $("pb-lim-" + d).innerHTML = LIMIT_ROWS.map(([dd, end, name], i) => dd !== d ? "" :
       `<div class="big stepper"><div><span>${name}</span><b id="lim-${i}"></b></div>
-        <button data-lim="${i}" data-dir="-1" aria-label="${name} ${label(d)} down">&minus;</button><button data-lim="${i}" data-dir="1" aria-label="${name} ${label(d)} up">+</button></div>`).join("");
+        <button data-lim="${i}" data-dir="-1" aria-describedby="lim-${i}" aria-label="${name} ${label(d)}, ${LIMIT_WORDS[d][0]}">&minus;</button><button data-lim="${i}" data-dir="1" aria-describedby="lim-${i}" aria-label="${name} ${label(d)}, ${LIMIT_WORDS[d][1]}">+</button></div>`).join("");
   }
   $("set-gps").onclick = () => {
     if (st.mode === "gps") setMode("man"); else { setMode("gps"); if (!st.track) $("use-here").click(); }
@@ -805,7 +836,7 @@ function buildSettings() {
 function syncSettings() {
   if (!$("set-gps")) return;
   $("set-gps").setAttribute("aria-checked", st.mode === "gps");
-  $("gps-word").textContent = st.mode !== "gps" ? "Off" : st.fix ? "On" : "No fix";
+  $("gps-word").textContent = st.mode !== "gps" ? "Off" : st.fix ? "On" : st.denied ? "Blocked in browser" : "No fix";
   $("range-word").textContent = DIALS.every(d => st.limits[d][0] === LM.FULL[d][0] && st.limits[d][1] === LM.FULL[d][1]) ? "Full" : "Custom";
   LIMIT_ROWS.forEach(([d, end], i) => { $("lim-" + i).textContent = valText(d, st.limits[d][end]); });
 }
@@ -881,7 +912,9 @@ function renderWatch() { if (!$("s-shutter")) buildWatch(); else syncWatch(); }
 /* Panel */
 function renderPanel() {
   const c = ctx();
-  $("tout").value = hhmm(st.time);
+  $("tout").value = hhmm(st.time); $("time").setAttribute("aria-valuetext", hhmm(st.time));
+  const zm = tzOffsetMin(st.tz, st.date);
+  $("r-tz").textContent = `${st.tz.split("/").pop().replace(/_/g, " ")} (UTC${zm < 0 ? "\u2212" : "+"}${Math.floor(Math.abs(zm) / 60)}${Math.abs(zm) % 60 ? ":" + String(Math.abs(zm) % 60).padStart(2, "0") : ""})`;
   $("r-rise").textContent = c.polar || c.polarDay ? "none" : hhmm(c.rise);
   $("r-set").textContent = c.polar || c.polarDay ? "none" : hhmm(c.set);
   $("r-elev").textContent = (Math.asin(c.exact) * 180 / Math.PI).toFixed(1) + "°";
@@ -1018,12 +1051,12 @@ $("use-here").onclick = () => {
   navigator.geolocation.getCurrentPosition(async pos => {
     st.lat = pos.coords.latitude; st.lon = pos.coords.longitude; st.track = null; $("track-row").hidden = true;
     st.tz = (await zoneFor(st.lat, st.lon)) || browserTz;
-    st.fix = true; st.follow = true; followNow(); fillTz();
+    st.fix = true; st.denied = false; st.follow = true; followNow(); fillTz();
     clearInterval(clockTimer); clockTimer = setInterval(() => { if (st.follow) { followNow(); changed(); } }, 30000);
     gpsStatus(`${st.lat.toFixed(5)}, ${st.lon.toFixed(5)} \u00b1${Math.round(pos.coords.accuracy)} m`, true);
     fetchWeather(); changed();
   }, err => {
-    st.fix = false; syncSettings();
+    st.fix = false; st.denied = err.code === 1; syncSettings();
     gpsStatus(err.code === 1 ? "Location is turned off for this page. Allow it in your browser's site settings, or load a GPX file from GPS Trace." : "No location fix: " + err.message, false);
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
 };
@@ -1062,7 +1095,7 @@ function fillTz() {
   $("tz").innerHTML = zones.map(z => `<option value="${z}"${z === st.tz ? " selected" : ""}>${z.replace(/_/g, " ")} (${off(z)})</option>`).join("");
 }
 function init() {
-  $("places").innerHTML = PLACES.map((p, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === 0}">${p.name}</button>`).join("");
+  $("places").innerHTML = PLACES.map((p, i) => `<button class="chip" data-i="${i}" aria-pressed="${p.lat === st.lat && p.lon === st.lon}">${p.name}</button>`).join("");
   $("places").querySelectorAll(".chip").forEach(b => b.onclick = () => {
     const p = PLACES[+b.dataset.i];
     Object.assign(st, { lat: p.lat, lon: p.lon, tz: p.tz });
@@ -1070,7 +1103,7 @@ function init() {
     $("places").querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === b));
     changed();
   });
-  const today = localParts(st.tz); st.date = today.date;
+  const today = localParts(st.tz); st.date = today.date; st.time = Math.round(today.time / 5) * 5 % 1440;
   $("lat").value = st.lat; $("lon").value = st.lon; $("date").value = st.date; $("time").value = st.time;
   fillTz();
   const manual = () => $("places").querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", "false"));
@@ -1086,6 +1119,7 @@ function init() {
   // Sky dial picked by hand overrides live weather until the place or date changes
   document.addEventListener("click", e => { if (e.target.closest("[data-sky]")) st.skyTouched = true; }, true);
   clampDials(); rebalance(); renderAll();
+  if (st.resumeGps) { setMode("gps"); $("use-here").click(); }
 }
 init();
 </script>
