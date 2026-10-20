@@ -669,7 +669,7 @@ async function fetchWeather() {
     st.skyTouched = false;
   } catch {
     st.live = null;
-    st.wxNote = "For live weather, open localhost:8139/lumetra-sim.html on your PC, or set the sky dial by hand.";
+    st.wxNote = "For live weather, open andrewjfiore.github.io/lumetra-sim, or set the sky dial by hand.";
   }
   changed();
 }
@@ -704,7 +704,7 @@ $("use-here").onclick = () => {
     gpsStatus(`${st.lat.toFixed(5)}, ${st.lon.toFixed(5)} \u00b1${Math.round(pos.coords.accuracy)} m`, true);
     fetchWeather(); changed();
   }, err => {
-    gpsStatus(err.code === 1 ? "For your location, open localhost:8139/lumetra-sim.html on your PC, or load a GPX file from GPS Trace." : "No location fix: " + err.message, false);
+    gpsStatus(err.code === 1 ? "For your location, open andrewjfiore.github.io/lumetra-sim, or load a GPX file from GPS Trace." : "No location fix: " + err.message, false);
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
 };
 $("gpx").onchange = async e => {
