@@ -239,7 +239,7 @@ svg.chart { display: block; width: 100%; min-width: 520px; height: auto; cursor:
           <div class="view" id="view"></div>
         </div>
       </div>
-      <p class="watch-note">Swipe or scroll a dial sideways to turn it. Tap a padlock to hold that setting, double tap a held dial to free it. Scroll up or down, or tap the dots, for the sun times and settings.</p>
+      <p class="watch-note">Swipe or scroll a dial sideways to turn it. Tap a padlock to hold that setting, double tap a held dial to free it. Scroll up or down, or tap the dots, for film, sun times and settings.</p>
     </div>
 
     <div class="side">
@@ -466,13 +466,15 @@ const st = {
   sky: "clear", live: null, wxNote: "", track: null, trackIdx: 0, follow: false,
   dials: { shutter: 0, f: 24, iso: 6 }, locks: { shutter: false, f: false, iso: true },
   hint: "", limits: JSON.parse(JSON.stringify(LM.FULL)),
+  film: { on: false, box: 12, push: 0, years: 0, storage: "room" },
 };
 try {
   const saved = JSON.parse(localStorage.getItem("lumetra-sim") || "null");
   if (saved && saved.limits) for (const d of ["shutter", "f", "iso"]) if (Array.isArray(saved.limits[d])) st.limits[d] = saved.limits[d].map(Number);
   if (saved && saved.locks) Object.assign(st.locks, saved.locks);
+  if (saved && saved.film) Object.assign(st.film, saved.film);
 } catch {}
-function save() { try { localStorage.setItem("lumetra-sim", JSON.stringify({ limits: st.limits, locks: st.locks })); } catch {} }
+function save() { try { localStorage.setItem("lumetra-sim", JSON.stringify({ limits: st.limits, locks: st.locks, film: st.film })); } catch {} }
 
 const hhmm = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
 const doyOf = s => { const d = new Date(s + "T12:00:00Z"); return Math.round((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1; };
@@ -585,15 +587,16 @@ function buildWatch() {
     $("view").addEventListener("scroll", () => { syncPage(); }, { passive: true });
   }
   buildSettings();
+  buildFilm();
   for (const d of [...DIALS, "sky"]) wireStrip($("s-" + d));
-  DIALS.forEach(d => $("l-" + d).onclick = () => { st.locks[d] = !st.locks[d]; save(); renderAll(); });
+  DIALS.forEach(d => $("l-" + d).onclick = () => { if (d === "iso" && st.film.on) { nope(d); return; } st.locks[d] = !st.locks[d]; save(); renderAll(); });
   syncWatch(false);
 }
 function curIdx(d) { return d === "sky" ? SKIES.findIndex(s => s.id === st.sky) : toIdx(d, st.dials[d]); }
 // Move dial d to item i if the meter allows it
 function choose(d, i) {
   if (d === "sky") { st.sky = SKIES[i].id; st.skyTouched = true; rebalance(); return; }
-  if (st.locks[d]) { flash("Double tap to unlock"); nope(d); return; }
+  if (st.locks[d]) { if (!(d === "iso" && st.film.on)) flash("Double tap to unlock"); nope(d); return; }
   turn(d, fromIdx(d, i) - st.dials[d]);
   if (st.hint) { nope(d); st.hint = ""; }
 }
@@ -627,6 +630,7 @@ function wireStrip(el) {
   let lastTap = 0;
   el.addEventListener("click", e => {
     if (d !== "sky" && st.locks[d]) {
+      if (d === "iso" && st.film.on) { nope(d); return; }
       const now = Date.now();
       if (now - lastTap < 350) { st.locks[d] = false; lastTap = 0; flash(""); save(); renderAll(); }
       else { lastTap = now; flash("Double tap to unlock"); }
@@ -683,6 +687,9 @@ let page = 0;
 // One idea per page, two or three big tiles each
 const PAGES = [
   { id: "meter", name: "Meter" },
+  { id: "film", name: "Film", tint: "ico iso", icon: () => filmIcon },
+  { id: "push", name: "Push and pull", tint: "tint-sun", icon: () => pushIcon },
+  { id: "expired", name: "Expired film", tint: "tint-moon", icon: () => clockIcon },
   { id: "sun", name: "Sun", tint: "tint-sun", icon: () => ICON.sunhalf },
   { id: "light", name: "Light", tint: "tint-sun", icon: () => SKY.sunsmall },
   { id: "now", name: "Sun now", tint: "tint-sun", icon: () => ICON.f },
@@ -770,9 +777,70 @@ function syncSettings() {
   $("range-word").textContent = DIALS.every(d => st.limits[d][0] === LM.FULL[d][0] && st.limits[d][1] === LM.FULL[d][1]) ? "Full" : "Custom";
   LIMIT_ROWS.forEach(([d, end], i) => { $("lim-" + i).textContent = valText(d, st.limits[d][end]); });
 }
+/* Film pages: box speed, push or pull, expired film */
+// ponytail: expired-film rule of thumb, +1 stop per decade at room temperature, per 2 decades in a fridge, per 4 in a freezer.
+// Slide film and very old or badly stored stock need more; a test roll beats any rule.
+const STORAGE = [
+  { id: "room", name: "Room temp", years: 10 },
+  { id: "fridge", name: "Fridge", years: 20 },
+  { id: "freezer", name: "Freezer", years: 40 },
+];
+const filmIcon = svg('<rect x="3" y="6" width="18" height="12" rx="1.5"/><path d="M3 9h18M3 15h18M6 6v3M10 6v3M14 6v3M18 6v3M6 15v3M10 15v3M14 15v3M18 15v3"/>');
+const pushIcon = svg('<path d="M12 20V5M6 11l6-6 6 6"/><path d="M5 20h14"/>');
+const clockIcon = svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>');
+const boxIcon = svg('<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>');
+const snowIcon = svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/>');
+const expiredThirds = () => Math.round(3 * st.film.years / STORAGE.find(x => x.id === st.film.storage).years);
+const stopText = n => n === 0 ? "None" : (n > 0 ? "+" : "−") + thirds(n);
+// EI index on the ISO dial: box speed, plus push, minus the extra exposure old film needs
+const filmEI = () => { const [lo, hi] = st.limits.iso; return Math.max(lo, Math.min(hi, st.film.box + st.film.push - expiredThirds())); };
+function applyFilm() {
+  if (st.film.on) { st.dials.iso = filmEI(); st.locks.iso = true; }
+  save(); rebalance(); syncFilm(); renderAll();
+}
+function stepper(id, name, act) {
+  return `<div class="big stepper" id="row-${id}"><div><span>${name}</span><b id="v-${id}"></b></div>
+    <button data-film="${id}" data-dir="-1" aria-label="${name} down">&minus;</button><button data-film="${id}" data-dir="1" aria-label="${name} up">+</button></div>`;
+}
+function buildFilm() {
+  $("pb-film").innerHTML = `<div class="big"><i class="ico iso">${filmIcon}</i><div><span>Meter for film</span><b id="film-word"></b></div><button class="tog" id="film-on" role="switch" aria-label="Meter for film"></button></div>` +
+    stepper("box", "Box speed") +
+    `<div class="big"><i class="ico iso">${ICON.iso}</i><div><span>Meter at</span><b id="film-ei"></b></div></div>`;
+  $("pb-push").innerHTML = stepper("push", "Push or pull") +
+    `<div class="big"><i class="tint-sun">${pushIcon}</i><div><span>Develop</span><b id="film-dev"></b></div></div>`;
+  $("pb-expired").innerHTML = stepper("years", "Years past date") +
+    `<div class="big"><i class="tint-moon">${snowIcon}</i><div><span>Stored in</span><b id="film-store"></b></div><button class="sreset" id="film-store-btn">Change</button></div>` +
+    `<div class="big"><i class="tint-sun">${clockIcon}</i><div><span>Extra exposure</span><b id="film-extra"></b></div></div>`;
+  $("film-on").onclick = () => { st.film.on = !st.film.on; if (!st.film.on) st.locks.iso = true; applyFilm(); };
+  $("film-store-btn").onclick = () => { const i = STORAGE.findIndex(x => x.id === st.film.storage); st.film.storage = STORAGE[(i + 1) % STORAGE.length].id; applyFilm(); };
+  document.querySelectorAll("[data-film]").forEach(b => b.onclick = () => {
+    const k = b.dataset.film, dir = +b.dataset.dir;
+    const range = { box: [0, LM.ISOS.length - 1], push: [-9, 9], years: [0, 60] }[k];
+    const next = st.film[k] + (k === "push" ? 3 * dir : dir);
+    if (next < range[0] || next > range[1]) { const row = b.closest(".big"); row.classList.remove("err"); void row.offsetWidth; row.classList.add("err"); setTimeout(() => row.classList.remove("err"), 340); return; }
+    st.film[k] = next; applyFilm();
+  });
+  syncFilm();
+}
+function syncFilm() {
+  if (!$("film-on")) return;
+  const f = st.film;
+  $("film-on").setAttribute("aria-checked", f.on);
+  $("film-word").textContent = f.on ? "On" : "Off";
+  $("v-box").textContent = "ISO " + LM.ISOS[f.box];
+  $("film-ei").textContent = "EI " + LM.ISOS[filmEI()];
+  $("v-push").textContent = f.push === 0 ? "Box speed" : (f.push > 0 ? "Push +" : "Pull −") + thirds(f.push);
+  $("film-dev").textContent = f.push === 0 ? "Normal" : (f.push > 0 ? "Push +" : "Pull −") + thirds(f.push) + (Math.abs(f.push) === 3 ? " stop" : " stops");
+  $("v-years").textContent = f.years === 0 ? "In date" : f.years + (f.years === 1 ? " year" : " years");
+  $("film-store").textContent = STORAGE.find(x => x.id === f.storage).name;
+  $("film-extra").textContent = stopText(expiredThirds());
+  const iso = document.querySelector(".ico.iso small"); if (iso) iso.textContent = f.on ? "EI" : "ISO";
+}
+
 function applyLimits() {
   for (const d of DIALS) { const [lo, hi] = st.limits[d]; st.dials[d] = Math.max(lo, Math.min(hi, st.dials[d])); $("s-" + d).innerHTML = stripHTML(d); }
-  save(); rebalance(); syncSettings(); syncWatch(false);
+  if (st.film.on) st.dials.iso = filmEI();
+  save(); rebalance(); syncSettings(); syncFilm(); syncWatch(false);
 }
 function renderWatch() { if (!$("s-shutter")) buildWatch(); else syncWatch(); }
 
