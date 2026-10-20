@@ -109,6 +109,21 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .tog[aria-checked="true"] { background: var(--w-live); }
 .tog[aria-checked="true"]::after { left: 23px; }
 .stp button:focus-visible, .tog:focus-visible, .sreset:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
+.bigs { display: grid; gap: 5px; flex: 1; grid-auto-rows: minmax(0, 1fr); }
+.big { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 8px; background: var(--w-tile); border-radius: 12px; padding: 4px 10px 4px 8px; min-height: 0; }
+.big > i { display: grid; place-items: center; color: var(--w-dim); }
+.big > i svg { width: 24px; height: 24px; }
+.big span { display: block; font-size: 11px; color: var(--w-dim); line-height: 1.2; }
+.big b { display: block; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; line-height: 1.15; white-space: nowrap; }
+.big b small { font-size: 12px; font-weight: 500; color: var(--w-dim); margin: 0 5px; }
+.big.stepper { grid-template-columns: 1fr auto auto; padding-left: 12px; }
+.big.stepper button { width: 38px; height: 38px; border-radius: 50%; border: 0; background: #33342f; color: var(--w-fg); font: 600 20px/1 inherit; font-family: inherit; cursor: pointer; padding: 0; }
+.big.stepper button:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
+.big.err { animation: nope 320ms ease-out; box-shadow: inset 0 0 0 1.5px var(--c-err); }
+@media (prefers-reduced-motion: reduce) { .big.err { animation: none; } }
+.pdots { gap: 4px; }
+.pdots button { width: 5px; height: 5px; }
+.pdots button[aria-current="true"] { height: 10px; }
 .sreset { background: none; border: 0; color: var(--w-accent); font: 600 12px inherit; font-family: inherit; cursor: pointer; padding: 6px; }
 .view::-webkit-scrollbar { display: none; }
 
@@ -224,7 +239,7 @@ svg.chart { display: block; width: 100%; min-width: 520px; height: auto; cursor:
           <div class="view" id="view"></div>
         </div>
       </div>
-      <p class="watch-note">Swipe or scroll a dial sideways to turn it. Tap a padlock to hold that setting, double tap a held dial to free it. Scroll up or down, or tap the dots, for the Sun and Settings pages.</p>
+      <p class="watch-note">Swipe or scroll a dial sideways to turn it. Tap a padlock to hold that setting, double tap a held dial to free it. Scroll up or down, or tap the dots, for the sun times and settings.</p>
     </div>
 
     <div class="side">
@@ -355,7 +370,7 @@ const LM = (() => {
   // Dials in third stops. Aperture index 0 = f/1, ISO index 6 = ISO 100, shutter k: t = 2^(-k/3), k = 0 is 1 s.
   const APERTURES = "1|1.1|1.2|1.4|1.6|1.8|2|2.2|2.5|2.8|3.2|3.5|4|4.5|5|5.6|6.3|7.1|8|9|10|11|13|14|16|18|20|22|25|29|32|36|40|45|51|57|64".split("|");
   const ISOS = "25|32|40|50|64|80|100|125|160|200|250|320|400|500|640|800|1000|1250|1600|2000|2500|3200|4000|5000|6400".split("|");
-  const K_MIN = -35, K_MAX = 39; // about 45 min to 1/8000
+  const K_MIN = -33, K_MAX = 39; // about 32 min to 1/8000
   function shutterLabel(k) {
     if (k >= -15) return LABELS[k + 15];
     const t = Math.pow(2, -k / 3);
@@ -561,11 +576,10 @@ function buildWatch() {
     <div class="row"><span class="ico" id="sky-ico"></span>
       <div class="strip" id="s-sky" data-d="sky" tabindex="0" role="slider" aria-label="Sky">${skyHTML(c.isDay, lastLive)}</div><span></span></div>
   </div><div class="whint" id="whint" aria-live="polite"></div></section>
-  <section class="page" id="pg-1" aria-label="Sun"><div class="dl" id="sundata"></div></section>
-  <section class="page" id="pg-2" aria-label="Settings"><div class="set" id="settings"></div></section>`;
+  ${pagesHTML()}`;
   if (!$("pdots")) {
     const dots = document.createElement("div"); dots.className = "pdots"; dots.id = "pdots";
-    dots.innerHTML = ["Meter", "Sun", "Settings"].map((n, i) => `<button data-pg="${i}" aria-label="${n} page"></button>`).join("");
+    dots.innerHTML = PAGES.map((p, i) => `<button data-pg="${i}" aria-label="${p.name} page"></button>`).join("");
     document.querySelector(".screen").appendChild(dots);
     dots.querySelectorAll("button").forEach(b => b.onclick = () => $("view").scrollTo({ top: +b.dataset.pg * $("view").clientHeight, behavior: "smooth" }));
     $("view").addEventListener("scroll", () => { syncPage(); }, { passive: true });
@@ -666,13 +680,29 @@ function syncWatch(smooth = true) {
   syncPage();
 }
 let page = 0;
+// One idea per page, two or three big tiles each
+const PAGES = [
+  { id: "meter", name: "Meter" },
+  { id: "sun", name: "Sun", tint: "tint-sun", icon: () => ICON.sunhalf },
+  { id: "light", name: "Light", tint: "tint-sun", icon: () => SKY.sunsmall },
+  { id: "now", name: "Sun now", tint: "tint-sun", icon: () => ICON.f },
+  { id: "gps", name: "Settings", icon: () => ICON.gear },
+  { id: "lim-shutter", name: "Shutter range", tint: "ico shutter", icon: () => ICON.shutter },
+  { id: "lim-f", name: "Aperture range", tint: "ico f", icon: () => ICON.f },
+  { id: "lim-iso", name: "ISO range", tint: "ico iso", icon: () => ICON.iso },
+];
+function pagesHTML() {
+  return PAGES.slice(1).map((p, i) => `<section class="page" id="pg-${i + 1}" aria-label="${p.name}"><div class="bigs" id="pb-${p.id}"></div></section>`).join("");
+}
 function syncPage() {
   const v = $("view"); page = Math.round(v.scrollTop / Math.max(1, v.clientHeight));
   document.querySelectorAll("#pdots button").forEach((b, i) => b.setAttribute("aria-current", i === page));
-  $("wleft").innerHTML = page === 0 ? $("wleft").dataset.ev : page === 1 ? '<span class="evb tint-sun">' + ICON.sunhalf + 'Sun</span>' : '<span class="evb" style="color:var(--w-fg)">' + ICON.gear + 'Settings</span>';
+  const p = PAGES[page] || PAGES[0];
+  $("wleft").innerHTML = page === 0 ? $("wleft").dataset.ev : `<span class="evb ${p.tint || ""}" style="${p.tint ? "" : "color:var(--w-fg)"}">${p.icon()}${p.name}</span>`;
 }
+const tile = (icon, tint, label, value) => `<div class="big"><i class="${tint}">${icon}</i><div><span>${label}</span><b>${value}</b></div></div>`;
 
-/* Sun page: exact sun position for the place and date */
+/* Sun pages: exact sun position for the place and date */
 function sunAt(m) {
   const off = tzOffsetMin(st.tz, st.date), doy = doyOf(st.date);
   const g = LM.noaa(st.lat, st.lon, doy, m - off);
@@ -688,52 +718,46 @@ function crossings(deg) {
 }
 const compass = a => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(a / 45) % 8];
 function renderSun(c) {
-  const el = $("sundata"); if (!el) return;
-  const key = [st.lat, st.lon, st.date, st.tz, st.time, st.sky, c.polar].join("|");
-  if (el.dataset.key === key) return; el.dataset.key = key;
+  if (!$("pb-sun")) return;
+  const key = [st.lat, st.lon, st.date, st.tz, st.time, c.polar, c.rise, c.set].join("|");
+  if ($("pb-sun").dataset.key === key) return; $("pb-sun").dataset.key = key;
   const now = sunAt(st.time);
   let noon = 0, max = -90;
   for (let m = 0; m <= 1440; m += 2) { const h = sunAt(m).h; if (h > max) { max = h; noon = m; } }
   const am = st.time < noon;
   const pick = (deg, up) => (crossings(deg).find(x => x.up === up) || {}).m;
-  const span = (a, b) => a != null && b != null ? `${hhmm(Math.min(a, b))} to ${hhmm(Math.max(a, b))}` : "none";
+  const span = (a, b) => a != null && b != null ? `${hhmm(Math.min(a, b))}<small>to</small>${hhmm(Math.max(a, b))}` : "none";
   const golden = am ? span(pick(-4, true), pick(6, true)) : span(pick(6, false), pick(-4, false));
   const blue = am ? span(pick(-6, true), pick(-4, true)) : span(pick(-4, false), pick(-6, false));
-  const civil = am ? pick(-6, true) : pick(-6, false);
   const len = c.polar ? (max > 0 ? "24 h" : "0 h") : (() => { const d = c.set - c.rise; return `${Math.floor(d / 60)} h ${String(Math.round(d % 60)).padStart(2, "0")} m`; })();
-  const rows = [
-    [SKY.sun, "Sunrise", c.polar ? "none" : hhmm(c.rise), "tint-sun"],
-    [SKY.moon, "Sunset", c.polar ? "none" : hhmm(c.set), "tint-moon"],
-    [ICON.sunhalf, "Solar noon", `${hhmm(noon)}, ${max.toFixed(0)}\u00b0`, "tint-sun"],
-    [SKY.sunsmall, am ? "Golden hour AM" : "Golden hour PM", golden, "tint-sun"],
-    [SKY.moonsmall, am ? "Blue hour AM" : "Blue hour PM", blue, "tint-wet"],
-    [SKY.moon, am ? "Civil dawn" : "Civil dusk", civil != null ? hhmm(civil) : "none", "tint-moon"],
-    [ICON.shutter, "Day length", len, "ico shutter"],
-    [ICON.f, "Sun now", `${now.h.toFixed(1)}\u00b0 ${compass(now.az)} ${now.az.toFixed(0)}\u00b0`, "ico f"],
-  ];
-  el.innerHTML = rows.map(([i, l, v, t]) => `<div><i class="${t}" style="display:grid">${i}</i><span>${l}</span><b>${v}</b></div>`).join("");
+  $("pb-sun").innerHTML = tile(SKY.sun, "tint-sun", "Sunrise", c.polar ? "none" : hhmm(c.rise)) + tile(SKY.moon, "tint-moon", "Sunset", c.polar ? "none" : hhmm(c.set)) + tile(ICON.shutter, "ico shutter", "Day length", len);
+  $("pb-light").innerHTML = tile(SKY.sunsmall, "tint-sun", am ? "Morning golden hour" : "Evening golden hour", golden) + tile(SKY.moonsmall, "tint-wet", am ? "Morning blue hour" : "Evening blue hour", blue);
+  $("pb-now").innerHTML = tile(ICON.sunhalf, "tint-sun", "Height", `${now.h.toFixed(1)}°`) + tile(ICON.f, "ico f", "Direction", `${compass(now.az)} ${now.az.toFixed(0)}°`) + tile(SKY.sun, "tint-sun", "Highest today", `${max.toFixed(0)}°<small>at</small>${hhmm(noon)}`);
 }
 
-/* Settings page */
+/* Settings pages */
 const LIMIT_ROWS = [
-  ["shutter", 0, "Slowest shutter"], ["shutter", 1, "Fastest shutter"],
-  ["f", 0, "Widest aperture"], ["f", 1, "Narrowest aperture"],
-  ["iso", 0, "Lowest ISO"], ["iso", 1, "Highest ISO"],
+  ["shutter", 0, "Slowest"], ["shutter", 1, "Fastest"],
+  ["f", 0, "Widest"], ["f", 1, "Narrowest"],
+  ["iso", 0, "Lowest"], ["iso", 1, "Highest"],
 ];
 function buildSettings() {
-  const el = $("settings");
-  el.innerHTML = `<div class="srow"><span>GPS</span><button class="tog" id="set-gps" role="switch" aria-checked="${st.mode === "gps"}" aria-label="GPS"></button></div>` +
-    LIMIT_ROWS.map(([d, end, name], i) => `<div class="srow"><span>${name}</span><div class="stp">
-      <button data-lim="${i}" data-dir="-1" aria-label="${name} down">&minus;</button><b id="lim-${i}"></b><button data-lim="${i}" data-dir="1" aria-label="${name} up">+</button></div></div>`).join("") +
-    `<button class="sreset" id="set-reset">Reset limits</button>`;
+  $("pb-gps").innerHTML = `<div class="big"><i>${svg('<circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/>')}</i><div><span>GPS</span><b id="gps-word"></b></div><button class="tog" id="set-gps" role="switch" aria-label="GPS"></button></div>
+    <div class="big"><i>${svg('<path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4"/>')}</i><div><span>All dial ranges</span><b id="range-word"></b></div><button class="sreset" id="set-reset">Reset</button></div>`;
+  for (const d of DIALS) {
+    $("pb-lim-" + d).innerHTML = LIMIT_ROWS.map(([dd, end, name], i) => dd !== d ? "" :
+      `<div class="big stepper"><div><span>${name}</span><b id="lim-${i}"></b></div>
+        <button data-lim="${i}" data-dir="-1" aria-label="${name} ${label(d)} down">&minus;</button><button data-lim="${i}" data-dir="1" aria-label="${name} ${label(d)} up">+</button></div>`).join("");
+  }
   $("set-gps").onclick = () => {
     if (st.mode === "gps") setMode("man"); else { setMode("gps"); $("use-here").click(); }
     syncSettings();
   };
-  el.querySelectorAll("[data-lim]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-lim]").forEach(b => b.onclick = () => {
     const [d, end] = LIMIT_ROWS[+b.dataset.lim], dir = +b.dataset.dir;
     const lim = st.limits[d], full = LM.FULL[d], next = lim[end] + dir;
-    if (next < full[0] || next > full[1] || (end === 0 ? next > lim[1] : next < lim[0])) { b.closest(".srow").classList.remove("err"); void b.offsetWidth; b.closest(".srow").classList.add("err"); setTimeout(() => b.closest(".srow").classList.remove("err"), 340); return; }
+    const row = b.closest(".big");
+    if (next < full[0] || next > full[1] || (end === 0 ? next > lim[1] : next < lim[0])) { row.classList.remove("err"); void row.offsetWidth; row.classList.add("err"); setTimeout(() => row.classList.remove("err"), 340); return; }
     lim[end] = next; applyLimits();
   });
   $("set-reset").onclick = () => { st.limits = JSON.parse(JSON.stringify(LM.FULL)); applyLimits(); };
@@ -742,6 +766,8 @@ function buildSettings() {
 function syncSettings() {
   if (!$("set-gps")) return;
   $("set-gps").setAttribute("aria-checked", st.mode === "gps");
+  $("gps-word").textContent = st.mode === "gps" ? "On" : "Off";
+  $("range-word").textContent = DIALS.every(d => st.limits[d][0] === LM.FULL[d][0] && st.limits[d][1] === LM.FULL[d][1]) ? "Full" : "Custom";
   LIMIT_ROWS.forEach(([d, end], i) => { $("lim-" + i).textContent = valText(d, st.limits[d][end]); });
 }
 function applyLimits() {
