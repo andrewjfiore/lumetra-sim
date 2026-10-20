@@ -29,6 +29,14 @@
   --w-accent: #ffc233;
   --w-live: #5ad16a;
   --w-warn: #ff7a45;
+  --c-shutter: #ff9f0a;
+  --c-f: #64d2ff;
+  --c-iso: #bf5af2;
+  --c-sun: #ffd60a;
+  --c-moon: #c7d7ff;
+  --c-cloud: #d1d5db;
+  --c-wet: #4fa3ff;
+  --c-err: #ff453a;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -85,6 +93,9 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 }
 .ico { display: grid; justify-items: center; gap: 2px; color: var(--w-dim); }
 .ico svg { width: 20px; height: 20px; }
+.ico.shutter { color: var(--c-shutter); }
+.ico.f { color: var(--c-f); }
+.ico.iso { color: var(--c-iso); }
 .ico small { font-size: 8.5px; letter-spacing: 0.02em; line-height: 1; white-space: nowrap; }
 .strip {
   display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
@@ -104,6 +115,11 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .strip.solve .it.on { color: var(--w-accent); }
 .it.sky { display: grid; justify-items: center; gap: 1px; font-size: 8.5px; font-weight: 500; line-height: 1.1; white-space: normal; }
 .it.sky svg { width: 24px; height: 24px; }
+.tint-sun { color: var(--c-sun); }
+.tint-moon { color: var(--c-moon); }
+.tint-cloud { color: var(--c-cloud); }
+.tint-wet { color: var(--c-wet); }
+.it.sky:not(.on) .ring { opacity: 0.55; }
 .it.sky .ring { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; }
 .it.sky.live .ring { box-shadow: 0 0 0 2px var(--w-live); }
 .it.sky.on { font-size: 9px; color: var(--w-fg); }
@@ -114,7 +130,10 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .evb { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .evb svg { width: 16px; height: 16px; }
 .evb .evb.dark { color: var(--w-warn); }
-.whint { position: absolute; left: 8%; right: 8%; bottom: 2%; font-size: 11px; color: var(--w-warn); text-align: center; pointer-events: none; text-shadow: 0 0 6px #000, 0 0 3px #000; }
+@keyframes nope { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+.row.err { animation: nope 320ms ease-out; box-shadow: inset 0 0 0 1.5px var(--c-err); }
+@media (prefers-reduced-motion: reduce) { .row.err { animation: none; } }
+.whint { position: absolute; left: 8%; right: 8%; bottom: 2%; font-size: 11px; color: var(--w-dim); text-align: center; pointer-events: none; text-shadow: 0 0 6px #000, 0 0 3px #000; }
 .watch-note { font-size: 13px; color: var(--muted); text-align: center; max-width: 36ch; margin: 0; }
 .legend .ringkey { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ok); vertical-align: middle; margin-right: 6px; }
 @media (prefers-reduced-motion: no-preference) { .view > * { animation: rise 160ms ease-out; } }
@@ -484,16 +503,23 @@ function flash(msg) {
   const h = $("whint"); if (!h) return;
   h.textContent = msg; clearTimeout(hintTimer); hintTimer = setTimeout(() => { h.textContent = ""; }, 2600);
 }
+function nope(d) {
+  const row = $("s-" + d)?.closest(".row"); if (!row) return;
+  row.classList.remove("err"); void row.offsetWidth; row.classList.add("err");
+  setTimeout(() => row.classList.remove("err"), 340);
+}
+const TINT = { sun: "sun", sunsmall: "sun", sunpart: "sun", moon: "moon", moonsmall: "moon", moonpart: "moon", cloud: "cloud", clouds: "cloud", fog: "cloud", haze: "cloud", drizzle: "wet", rain: "wet", snow: "moon", storm: "wet" };
+const skyTint = (id, isDay) => { const s = SKIES.find(x => x.id === id); return "tint-" + TINT[isDay ? s.di : s.ni]; };
 function stripHTML(d) {
   return `<span class="pad"></span>` + items(d).map((t, i) => `<span class="it" data-i="${i}">${t}</span>`).join("") + `<span class="pad"></span>`;
 }
 function skyHTML(isDay, liveId) {
-  return `<span class="pad"></span>` + SKIES.map((s, i) => `<span class="it sky${liveId === s.id ? " live" : ""}" data-i="${i}"${liveId === s.id ? ' title="Live weather now"' : ""}><span class="ring">${SKY[isDay ? s.di : s.ni]}</span>${isDay ? s.day : s.night}</span>`).join("") + `<span class="pad"></span>`;
+  return `<span class="pad"></span>` + SKIES.map((s, i) => `<span class="it sky${liveId === s.id ? " live" : ""}" data-i="${i}"${liveId === s.id ? ' title="Live weather now"' : ""}><span class="ring ${"tint-" + TINT[isDay ? s.di : s.ni]}">${SKY[isDay ? s.di : s.ni]}</span>${isDay ? s.day : s.night}</span>`).join("") + `<span class="pad"></span>`;
 }
 function buildWatch() {
   const c = ctx(); lastDay = c.isDay; lastLive = liveSkyNow();
   $("view").innerHTML = `<div class="rows">
-    ${DIALS.map(d => `<div class="row"><span class="ico">${ICON[d]}<small>${label(d)}</small></span>
+    ${DIALS.map(d => `<div class="row"><span class="ico ${d}">${ICON[d]}<small>${label(d)}</small></span>
       <div class="strip" id="s-${d}" data-d="${d}" tabindex="0" role="slider" aria-label="${label(d)}">${stripHTML(d)}</div>
       <button class="lock" id="l-${d}"></button></div>`).join("")}
     <div class="row"><span class="ico" id="sky-ico"></span>
@@ -507,13 +533,13 @@ function curIdx(d) { return d === "sky" ? SKIES.findIndex(s => s.id === st.sky) 
 // Move dial d to item i if the meter allows it
 function choose(d, i) {
   if (d === "sky") { st.sky = SKIES[i].id; st.skyTouched = true; rebalance(); return; }
-  if (st.locks[d]) { flash("Double tap to unlock"); return; }
+  if (st.locks[d]) { flash("Double tap to unlock"); nope(d); return; }
   turn(d, fromIdx(d, i) - st.dials[d]);
-  if (st.hint) { flash(st.hint); st.hint = ""; }
+  if (st.hint) { nope(d); st.hint = ""; }
 }
 function step(d, dir) {
   const i = Math.max(0, Math.min(maxIdx(d), curIdx(d) + dir));
-  if (i !== curIdx(d)) choose(d, i);
+  if (i !== curIdx(d)) choose(d, i); else nope(d);
   renderAll();
 }
 function wireStrip(el) {
@@ -577,7 +603,7 @@ function syncWatch(smooth = true) {
       lb.setAttribute("aria-label", (st.locks[d] ? "Unlock " : "Lock ") + label(d));
     } else {
       el.setAttribute("aria-valuetext", skyName(st.sky, c.isDay));
-      $("sky-ico").innerHTML = `${skyIcon(st.sky, c.isDay)}<small>Sky</small>`;
+      $("sky-ico").innerHTML = `${skyIcon(st.sky, c.isDay)}<small>Sky</small>`; $("sky-ico").className = "ico " + skyTint(st.sky, c.isDay);
     }
     place(el, i, smooth);
   }
