@@ -121,9 +121,11 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .big.stepper button:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
 .big.err { animation: nope 320ms ease-out; box-shadow: inset 0 0 0 1.5px var(--c-err); }
 @media (prefers-reduced-motion: reduce) { .big.err { animation: none; } }
-.pdots { gap: 4px; }
-.pdots button { width: 5px; height: 5px; }
-.pdots button[aria-current="true"] { height: 10px; }
+.pdots { gap: 0; right: 0.5%; }
+.pdots button { width: 18px; height: 13px; background: none; position: relative; border-radius: 0; }
+.pdots button::before { content: ""; position: absolute; left: 6px; top: 4px; width: 5px; height: 5px; border-radius: 50%; background: #4a4c47; }
+.pdots button[aria-current="true"] { height: 18px; background: none; }
+.pdots button[aria-current="true"]::before { height: 10px; border-radius: 3px; background: var(--w-fg); }
 .sreset { background: none; border: 0; color: var(--w-accent); font: 600 12px inherit; font-family: inherit; cursor: pointer; padding: 6px; }
 .view::-webkit-scrollbar { display: none; }
 
@@ -140,16 +142,16 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .ico small { font-size: 8.5px; letter-spacing: 0.02em; line-height: 1; white-space: nowrap; }
 .strip {
   display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
-  min-width: 0; height: 100%; min-height: 36px; align-items: center; outline: none; border-radius: 8px; cursor: grab; touch-action: pan-x;
+  min-width: 0; height: 100%; min-height: 36px; align-items: center; outline: none; border-radius: 8px; cursor: grab;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
           mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
 }
 .strip::-webkit-scrollbar { display: none; }
 .strip:focus-visible { box-shadow: inset 0 0 0 2px var(--w-accent); }
 .strip.locked { overflow-x: hidden; cursor: pointer; touch-action: manipulation; }
-.strip .pad { flex: 0 0 calc(50% - 29px); }
+.strip .pad { flex: 0 0 calc(50% - 32px); }
 .it {
-  flex: 0 0 58px; scroll-snap-align: center; text-align: center; color: var(--w-dim); font-size: 16px; font-weight: 600;
+  flex: 0 0 64px; min-width: 0; scroll-snap-align: center; text-align: center; color: var(--w-dim); font-size: 16px; font-weight: 600;
   font-variant-numeric: tabular-nums; white-space: nowrap; transition: color 120ms, font-size 120ms; user-select: none; cursor: pointer;
 }
 .it.on { color: var(--w-fg); font-size: 24px; }
@@ -272,7 +274,7 @@ svg.chart { display: block; width: 100%; min-width: 520px; height: auto; cursor:
             <div class="fields">
               <label for="lat">Latitude<input id="lat" type="number" step="0.01" min="-66" max="66"></label>
               <label for="lon">Longitude<input id="lon" type="number" step="0.01" min="-180" max="180"></label>
-              <label for="tz">Time zone<select id="tz"></select></label>
+              <label for="tz" style="grid-column: span 2">Time zone<select id="tz"></select></label>
             </div>
           </div>
         </div>
@@ -362,7 +364,8 @@ const LM = (() => {
     const { eq, d } = noaa(lat, lon, doy, 720 - tzMin);
     const la = lat * Math.PI / 180;
     const c = Math.cos(90.833 * Math.PI / 180) / (Math.cos(la) * Math.cos(d)) - Math.tan(la) * Math.tan(d);
-    if (c > 1 || c < -1) return null;
+    if (c > 1) return null; // sun never rises
+    if (c < -1) { const noon = 720 - 4 * lon - eq + tzMin; return { rise: noon - 720, set: noon + 720, polarDay: true }; }
     const ha = Math.acos(c) * 180 / Math.PI;
     return { rise: 720 - 4 * (lon + ha) - eq + tzMin, set: 720 - 4 * (lon - ha) - eq + tzMin };
   }
@@ -374,7 +377,7 @@ const LM = (() => {
   function shutterLabel(k) {
     if (k >= -15) return LABELS[k + 15];
     const t = Math.pow(2, -k / 3);
-    return `about ${Math.pow(2, Math.round(Math.log2(t / 60)))} min`;
+    return t < 100 ? `~${Math.round(t)} s` : `~${Math.round(t / 60)} min`;
   }
   // Balance: fIdx + k = 3 * EV100 + isoIdx - 6. Returns the free dial's new index and any leftover thirds.
   const FULL = { shutter: [K_MIN, K_MAX], f: [0, APERTURES.length - 1], iso: [0, ISOS.length - 1] };
@@ -465,6 +468,7 @@ const st = {
   mode: "man", lat: 42.37, lon: -71.95, tz: "America/New_York", date: "", time: 780,
   sky: "clear", live: null, wxNote: "", track: null, trackIdx: 0, follow: false,
   dials: { shutter: 0, f: 24, iso: 6 }, locks: { shutter: false, f: false, iso: true },
+  fix: false, manualSnap: null,
   hint: "", limits: JSON.parse(JSON.stringify(LM.FULL)),
   film: { on: false, box: 12, push: 0, years: 0, storage: "room" },
 };
@@ -473,12 +477,23 @@ try {
   if (saved && saved.limits) for (const d of ["shutter", "f", "iso"]) if (Array.isArray(saved.limits[d])) st.limits[d] = saved.limits[d].map(Number);
   if (saved && saved.locks) Object.assign(st.locks, saved.locks);
   if (saved && saved.film) Object.assign(st.film, saved.film);
+  if (saved && saved.dials) for (const d of ["shutter", "f", "iso"]) if (Number.isFinite(saved.dials[d])) st.dials[d] = saved.dials[d];
 } catch {}
-function save() { try { localStorage.setItem("lumetra-sim", JSON.stringify({ limits: st.limits, locks: st.locks, film: st.film })); } catch {} }
+function save() { try { localStorage.setItem("lumetra-sim", JSON.stringify({ limits: st.limits, locks: st.locks, film: st.film, dials: st.dials })); } catch {} }
+function clampDials() {
+  for (const d of ["shutter", "f", "iso"]) { const [lo, hi] = st.limits[d]; st.dials[d] = Math.max(lo, Math.min(hi, st.dials[d])); }
+  if (st.film.on) { st.dials.iso = filmEI(); st.locks.iso = true; }
+}
 
 const hhmm = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
 const doyOf = s => { const d = new Date(s + "T12:00:00Z"); return Math.round((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1; };
+const tzCache = new Map();
 function tzOffsetMin(zone, dateStr) {
+  const key = zone + "|" + dateStr;
+  if (!tzCache.has(key)) tzCache.set(key, tzOffsetRaw(zone, dateStr));
+  return tzCache.get(key);
+}
+function tzOffsetRaw(zone, dateStr) {
   try {
     const p = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" }).formatToParts(new Date(dateStr + "T12:00:00Z"));
     const m = (p.find(x => x.type === "timeZoneName") || {}).value.match(/GMT([+-])(\d{2}):?(\d{2})?/);
@@ -495,16 +510,17 @@ function ctx() {
   const doy = doyOf(st.date);
   let rise, set, polar = false;
   const lv = st.live && st.live.date === st.date ? st.live : null;
+  let polarDay = false;
   if (lv && lv.rise != null) { rise = lv.rise; set = lv.set; }
   else {
     const ev = LM.sunEvents(st.lat, st.lon, doy, tzOffsetMin(st.tz, st.date));
-    if (ev) { rise = Math.floor(ev.rise); set = Math.floor(ev.set); } else polar = true;
+    if (ev) { rise = Math.floor(ev.rise); set = Math.floor(ev.set); polarDay = !!ev.polarDay; } else polar = true;
   }
   const exact = LM.noaa(st.lat, st.lon, doy, st.time - tzOffsetMin(st.tz, st.date)).sinh;
   const isDay = exact > Math.sin(-0.833 * Math.PI / 180);
   if (polar) return { doy, polar, exact, isDay };
   const sh = LM.sinElev(st.lat, doy, st.time, rise, set);
-  return { doy, rise, set, sh, exact, isDay, dark: sh <= LM.CIVIL };
+  return { doy, rise, set, sh, exact, isDay, polarDay, dark: sh <= LM.CIVIL };
 }
 const skyName = (id, isDay) => { const s = SKIES.find(x => x.id === id); return isDay ? s.day : s.night; };
 const skyIcon = (id, isDay) => { const s = SKIES.find(x => x.id === id); return SKY[isDay ? s.di : s.ni]; };
@@ -512,7 +528,9 @@ function liveSkyNow() {
   if (!st.live || st.live.date !== st.date || !st.live.hourly) return null;
   return st.live.hourly[Math.min(23, Math.floor(st.time / 60))] || null;
 }
-function sceneEV(c) { return LM.ev100(c.sh) + LM.cloud(skyName(st.sky, c.isDay)); }
+// skyEV is what the sky gives; sceneEV also carries film correction the ISO dial could not hold, and is what the dials balance against
+function skyEV(c) { return LM.ev100(c.sh) + LM.cloud(skyName(st.sky, c.isDay)); }
+function sceneEV(c) { return skyEV(c) + (st.film && st.film.on ? filmSpill() / 3 : 0); }
 
 // Keep the exposure balanced after the sky or time changes: first unlocked dial in priority follows
 function rebalance() {
@@ -544,7 +562,7 @@ function thirds(n) {
 
 /* Watch */
 const DIALS = ["shutter", "f", "iso"];
-const IW = 58;
+const IW = 64;
 const valText = (d, v) => d === "shutter" ? LM.shutterLabel(v) : d === "f" ? "f/" + LM.APERTURES[v] : LM.ISOS[v];
 const items = d => { const [lo, hi] = st.limits[d]; return Array.from({ length: hi - lo + 1 }, (_, i) => valText(d, lo + i)); };
 const toIdx = (d, v) => v - st.limits[d][0];
@@ -676,8 +694,8 @@ function syncWatch(smooth = true) {
   if (c.polar) ev = `<span class="evb dark">${ICON.ev}No sun</span>`;
   else if (c.dark) ev = `<span class="evb dark">${ICON.ev}Too dark</span>`;
   else {
-    const e = sceneEV(c), off = LM.offset(st.dials, e);
-    ev = `<span class="evb" title="Exposure value">${ICON.ev}EV ${(Math.round(e * 10) / 10).toFixed(1)}${off ? ` <span class="dev">${off > 0 ? "+" : "−"}${thirds(off)}</span>` : ""}</span>`;
+    const e = sceneEV(c), off = LM.offset(st.dials, e), shown = skyEV(c);
+    ev = `<span class="evb" title="Exposure value">${ICON.ev}EV ${(Math.round(shown * 10) / 10).toFixed(1)}${off ? ` <span class="dev">${off > 0 ? "+" : "−"}${thirds(off)}</span>` : ""}</span>`;
   }
   $("wleft").dataset.ev = ev;
   renderSun(c);
@@ -736,8 +754,8 @@ function renderSun(c) {
   const span = (a, b) => a != null && b != null ? `${hhmm(Math.min(a, b))}<small>to</small>${hhmm(Math.max(a, b))}` : "none";
   const golden = am ? span(pick(-4, true), pick(6, true)) : span(pick(6, false), pick(-4, false));
   const blue = am ? span(pick(-6, true), pick(-4, true)) : span(pick(-4, false), pick(-6, false));
-  const len = c.polar ? (max > 0 ? "24 h" : "0 h") : (() => { const d = c.set - c.rise; return `${Math.floor(d / 60)} h ${String(Math.round(d % 60)).padStart(2, "0")} m`; })();
-  $("pb-sun").innerHTML = tile(SKY.sun, "tint-sun", "Sunrise", c.polar ? "none" : hhmm(c.rise)) + tile(SKY.moon, "tint-moon", "Sunset", c.polar ? "none" : hhmm(c.set)) + tile(ICON.shutter, "ico shutter", "Day length", len);
+  const len = c.polar ? "0 h" : c.polarDay ? "24 h"  : (() => { const d = c.set - c.rise; return `${Math.floor(d / 60)} h ${String(Math.round(d % 60)).padStart(2, "0")} m`; })();
+  $("pb-sun").innerHTML = tile(SKY.sun, "tint-sun", "Sunrise", c.polar || c.polarDay ? "none" : hhmm(c.rise)) + tile(SKY.moon, "tint-moon", "Sunset", c.polar || c.polarDay ? "none" : hhmm(c.set)) + tile(ICON.shutter, "ico shutter", "Day length", len);
   $("pb-light").innerHTML = tile(SKY.sunsmall, "tint-sun", am ? "Morning golden hour" : "Evening golden hour", golden) + tile(SKY.moonsmall, "tint-wet", am ? "Morning blue hour" : "Evening blue hour", blue);
   $("pb-now").innerHTML = tile(ICON.sunhalf, "tint-sun", "Height", `${now.h.toFixed(1)}°`) + tile(ICON.f, "ico f", "Direction", `${compass(now.az)} ${now.az.toFixed(0)}°`) + tile(SKY.sun, "tint-sun", "Highest today", `${max.toFixed(0)}°<small>at</small>${hhmm(noon)}`);
 }
@@ -757,7 +775,7 @@ function buildSettings() {
         <button data-lim="${i}" data-dir="-1" aria-label="${name} ${label(d)} down">&minus;</button><button data-lim="${i}" data-dir="1" aria-label="${name} ${label(d)} up">+</button></div>`).join("");
   }
   $("set-gps").onclick = () => {
-    if (st.mode === "gps") setMode("man"); else { setMode("gps"); $("use-here").click(); }
+    if (st.mode === "gps") setMode("man"); else { setMode("gps"); if (!st.track) $("use-here").click(); }
     syncSettings();
   };
   document.querySelectorAll("[data-lim]").forEach(b => b.onclick = () => {
@@ -767,13 +785,13 @@ function buildSettings() {
     if (next < full[0] || next > full[1] || (end === 0 ? next > lim[1] : next < lim[0])) { row.classList.remove("err"); void row.offsetWidth; row.classList.add("err"); setTimeout(() => row.classList.remove("err"), 340); return; }
     lim[end] = next; applyLimits();
   });
-  $("set-reset").onclick = () => { st.limits = JSON.parse(JSON.stringify(LM.FULL)); applyLimits(); };
+  $("set-reset").onclick = () => { st.limits = JSON.parse(JSON.stringify(LM.FULL)); st.locks.shutter = false; st.locks.f = false; applyLimits(); };
   syncSettings();
 }
 function syncSettings() {
   if (!$("set-gps")) return;
   $("set-gps").setAttribute("aria-checked", st.mode === "gps");
-  $("gps-word").textContent = st.mode === "gps" ? "On" : "Off";
+  $("gps-word").textContent = st.mode !== "gps" ? "Off" : st.fix ? "On" : "No fix";
   $("range-word").textContent = DIALS.every(d => st.limits[d][0] === LM.FULL[d][0] && st.limits[d][1] === LM.FULL[d][1]) ? "Full" : "Custom";
   LIMIT_ROWS.forEach(([d, end], i) => { $("lim-" + i).textContent = valText(d, st.limits[d][end]); });
 }
@@ -793,7 +811,10 @@ const snowIcon = svg('<path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/>');
 const expiredThirds = () => Math.round(3 * st.film.years / STORAGE.find(x => x.id === st.film.storage).years);
 const stopText = n => n === 0 ? "None" : (n > 0 ? "+" : "−") + thirds(n);
 // EI index on the ISO dial: box speed, plus push, minus the extra exposure old film needs
-const filmEI = () => { const [lo, hi] = st.limits.iso; return Math.max(lo, Math.min(hi, st.film.box + st.film.push - expiredThirds())); };
+const filmRaw = () => st.film.box + st.film.push - expiredThirds();
+const filmEI = () => { const [lo, hi] = st.limits.iso; return Math.max(lo, Math.min(hi, filmRaw())); };
+// Thirds the ISO dial cannot hold; negative means more exposure. Folded into the scene EV so the meter still balances.
+const filmSpill = () => filmRaw() - filmEI();
 function applyFilm() {
   if (st.film.on) { st.dials.iso = filmEI(); st.locks.iso = true; }
   save(); rebalance(); syncFilm(); renderAll();
@@ -827,7 +848,8 @@ function syncFilm() {
   $("film-on").setAttribute("aria-checked", f.on);
   $("film-word").textContent = f.on ? "On" : "Off";
   $("v-box").textContent = "ISO " + LM.ISOS[f.box];
-  $("film-ei").textContent = "EI " + LM.ISOS[filmEI()];
+  const spill = filmSpill();
+  $("film-ei").textContent = "EI " + LM.ISOS[filmEI()] + (spill ? `, then ${spill < 0 ? "open up" : "stop down"} ${thirds(spill)} ${Math.abs(spill) === 3 ? "stop" : "stops"}` : "");
   $("v-push").textContent = f.push === 0 ? "Box speed" : (f.push > 0 ? "Push +" : "Pull −") + thirds(f.push);
   $("v-years").textContent = f.years === 0 ? "In date" : f.years + (f.years === 1 ? " year" : " years");
   $("film-store").textContent = STORAGE.find(x => x.id === f.storage).name;
@@ -846,14 +868,16 @@ function renderWatch() { if (!$("s-shutter")) buildWatch(); else syncWatch(); }
 function renderPanel() {
   const c = ctx();
   $("tout").value = hhmm(st.time);
-  $("r-rise").textContent = c.polar ? "none" : hhmm(c.rise);
-  $("r-set").textContent = c.polar ? "none" : hhmm(c.set);
+  $("r-rise").textContent = c.polar || c.polarDay ? "none" : hhmm(c.rise);
+  $("r-set").textContent = c.polar || c.polarDay ? "none" : hhmm(c.set);
   $("r-elev").textContent = (Math.asin(c.exact) * 180 / Math.PI).toFixed(1) + "°";
-  $("r-ev").textContent = c.polar ? "--" : c.dark ? "too dark" : sceneEV(c).toFixed(2);
+  $("r-ev").textContent = c.polar ? "--" : c.dark ? "too dark" : skyEV(c).toFixed(2);
   const liveId = liveSkyNow();
   $("r-wx").textContent = liveId ? skyName(liveId, c.isDay) : "none";
   const ws = $("wx-status");
-  ws.hidden = !st.wxNote; ws.textContent = st.wxNote; ws.className = "status " + (st.live ? "ok" : "warn");
+  const mis = st.mode === "man" ? zoneMismatchHours() : 0;
+  const note = Math.abs(mis) >= 3 ? `This time zone puts noon ${Math.abs(mis)} hours ${mis > 0 ? "late" : "early"} for this longitude. Pick the zone for this place.` : st.wxNote;
+  ws.hidden = !note; ws.textContent = note; ws.className = "status " + (st.live ? "ok" : "warn");
   $("time").disabled = st.follow; $("date").disabled = st.follow;
 }
 
@@ -887,7 +911,7 @@ function renderChart() {
     s += `<path d="${pe}" fill="none" stroke="var(--exact)" stroke-width="2" stroke-dasharray="5 4"/>`;
     s += `<path d="${ps}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
     s += `<line x1="${x(st.time)}" x2="${x(st.time)}" y1="${T}" y2="${H - B}" stroke="var(--ink)" stroke-width="1" opacity="0.4"/>`;
-    if (!c.dark) s += `<circle cx="${x(st.time)}" cy="${y(sceneEV(c))}" r="5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`;
+    if (!c.dark) s += `<circle cx="${x(st.time)}" cy="${y(skyEV(c))}" r="5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`;
   } else {
     s += `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="14" fill="var(--muted)">No sunrise or sunset on this date at this latitude</text>`;
   }
@@ -900,8 +924,26 @@ $("chart").onclick = e => {
   $("time").value = st.time; changed();
 };
 
-function renderAll() { renderPanel(); renderChart(); renderWatch(); }
+function renderAll() { renderPanel(); renderChart(); renderWatch(); save(); }
 function changed() { applyLiveSky(); rebalance(); renderAll(); }
+
+/* Time zone for a place, from Open-Meteo. Blocked inside the claude.ai viewer, where the caller keeps its fallback. */
+const zoneCache = new Map();
+async function zoneFor(lat, lon) {
+  const key = lat.toFixed(2) + "," + lon.toFixed(2);
+  if (zoneCache.has(key)) return zoneCache.get(key);
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&timezone=auto&forecast_days=1&daily=sunrise`);
+    const z = r.ok ? (await r.json()).timezone : null;
+    if (z) zoneCache.set(key, z);
+    return z;
+  } catch { return null; }
+}
+// Sun-clock check for a hand-picked zone: noon should land within a few hours of 12:00
+function zoneMismatchHours() {
+  const off = tzOffsetMin(st.tz, st.date) / 60, sun = st.lon / 15;
+  return Math.round(off - sun);
+}
 
 /* Live weather: Open-Meteo, keyless. Blocked inside the claude.ai viewer, works from a normal web host. */
 let lastFetchKey = "";
@@ -936,6 +978,12 @@ function applyLiveSky() {
 
 /* Modes */
 function setMode(m) {
+  if (m === "gps" && st.mode !== "gps") st.manualSnap = { lat: st.lat, lon: st.lon, tz: st.tz, date: st.date, time: st.time };
+  if (m === "man" && st.mode === "gps" && st.manualSnap) {
+    Object.assign(st, st.manualSnap); clearInterval(clockTimer);
+    $("lat").value = st.lat; $("lon").value = st.lon; $("date").value = st.date; $("time").value = st.time; fillTz();
+  }
+  if (m === "gps" && st.fix) { lastFetchKey = ""; fetchWeather(); }
   st.mode = m;
   $("m-gps").setAttribute("aria-pressed", m === "gps"); $("m-man").setAttribute("aria-pressed", m === "man");
   $("gps-pane").hidden = m !== "gps"; $("man-pane").hidden = m !== "man";
@@ -953,14 +1001,16 @@ function followNow() {
 $("use-here").onclick = () => {
   if (!navigator.geolocation) { gpsStatus("This browser has no location service. Load a GPS Trace file instead.", false); return; }
   gpsStatus("", true);
-  navigator.geolocation.getCurrentPosition(pos => {
-    st.lat = pos.coords.latitude; st.lon = pos.coords.longitude; st.tz = browserTz; st.track = null; $("track-row").hidden = true;
-    st.follow = true; followNow(); fillTz();
+  navigator.geolocation.getCurrentPosition(async pos => {
+    st.lat = pos.coords.latitude; st.lon = pos.coords.longitude; st.track = null; $("track-row").hidden = true;
+    st.tz = (await zoneFor(st.lat, st.lon)) || browserTz;
+    st.fix = true; st.follow = true; followNow(); fillTz();
     clearInterval(clockTimer); clockTimer = setInterval(() => { if (st.follow) { followNow(); changed(); } }, 30000);
     gpsStatus(`${st.lat.toFixed(5)}, ${st.lon.toFixed(5)} \u00b1${Math.round(pos.coords.accuracy)} m`, true);
     fetchWeather(); changed();
   }, err => {
-    gpsStatus(err.code === 1 ? "For your location, open andrewjfiore.github.io/lumetra-sim, or load a GPX file from GPS Trace." : "No location fix: " + err.message, false);
+    st.fix = false; syncSettings();
+    gpsStatus(err.code === 1 ? "Location is turned off for this page. Allow it in your browser's site settings, or load a GPX file from GPS Trace." : "No location fix: " + err.message, false);
   }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
 };
 $("gpx").onchange = async e => {
@@ -972,15 +1022,17 @@ $("gpx").onchange = async e => {
       t: p.querySelector("time") ? new Date(p.querySelector("time").textContent) : null,
     })).filter(p => isFinite(p.lat) && isFinite(p.lon));
     if (!pts.length) throw new Error("no points");
-    st.track = pts; st.follow = false; clearInterval(clockTimer);
+    st.track = pts; st.fix = true; st.follow = false; clearInterval(clockTimer);
     $("track").max = pts.length - 1; $("track").value = pts.length - 1; $("track-row").hidden = false;
     gpsStatus(`${pts.length} points. Drag the track slider to move along it.`, true);
     useTrackPoint(pts.length - 1);
   } catch { gpsStatus("That file has no GPS points. Export the track from GPS Trace as GPX and try again.", false); }
 };
-function useTrackPoint(i) {
+async function useTrackPoint(i) {
   const p = st.track[i]; st.trackIdx = i;
   st.lat = p.lat; st.lon = p.lon;
+  const z = await zoneFor(p.lat, p.lon); if (z && z !== st.tz) { st.tz = z; fillTz(); }
+  if (st.trackIdx !== i) return;
   if (p.t && !isNaN(p.t)) { const lp = localParts(st.tz, p.t); st.date = lp.date; st.time = Math.round(lp.time / 5) * 5; $("date").value = st.date; $("time").value = st.time; }
   $("track-out").value = `${i + 1} of ${st.track.length}` + (p.t && !isNaN(p.t) ? ", " + p.t.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "");
   fetchWeather(); changed();
@@ -1008,13 +1060,18 @@ function init() {
   $("lat").value = st.lat; $("lon").value = st.lon; $("date").value = st.date; $("time").value = st.time;
   fillTz();
   const manual = () => $("places").querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", "false"));
-  ["lat", "lon"].forEach(id => $(id).oninput = () => { const n = parseFloat($(id).value); if (!isNaN(n)) { st[id] = n; manual(); changed(); } });
+  let zt = null;
+  ["lat", "lon"].forEach(id => $(id).oninput = () => {
+    const n = parseFloat($(id).value); if (isNaN(n)) return;
+    st[id] = n; manual(); changed();
+    clearTimeout(zt); zt = setTimeout(async () => { const z = await zoneFor(st.lat, st.lon); if (z && z !== st.tz) { st.tz = z; fillTz(); changed(); } }, 600);
+  });
   $("tz").onchange = () => { st.tz = $("tz").value; manual(); changed(); };
   $("date").oninput = () => { if ($("date").value) { st.date = $("date").value; fillTz(); if (st.mode === "gps") fetchWeather(); changed(); } };
   $("time").oninput = () => { st.time = +$("time").value; changed(); };
   // Sky dial picked by hand overrides live weather until the place or date changes
   document.addEventListener("click", e => { if (e.target.closest("[data-sky]")) st.skyTouched = true; }, true);
-  rebalance(); renderAll();
+  clampDials(); rebalance(); renderAll();
 }
 init();
 </script>
