@@ -806,8 +806,7 @@ function buildFilm() {
   $("pb-film").innerHTML = `<div class="big"><i class="ico iso">${filmIcon}</i><div><span>Meter for film</span><b id="film-word"></b></div><button class="tog" id="film-on" role="switch" aria-label="Meter for film"></button></div>` +
     stepper("box", "Box speed") +
     `<div class="big"><i class="ico iso">${ICON.iso}</i><div><span>Meter at</span><b id="film-ei"></b></div></div>`;
-  $("pb-push").innerHTML = stepper("push", "Push or pull") +
-    `<div class="big"><i class="tint-sun">${pushIcon}</i><div><span>Develop</span><b id="film-dev"></b></div></div>`;
+  $("pb-push").innerHTML = stepper("push", "Push or pull");
   $("pb-expired").innerHTML = stepper("years", "Years past date") +
     `<div class="big"><i class="tint-moon">${snowIcon}</i><div><span>Stored in</span><b id="film-store"></b></div><button class="sreset" id="film-store-btn">Change</button></div>` +
     `<div class="big"><i class="tint-sun">${clockIcon}</i><div><span>Extra exposure</span><b id="film-extra"></b></div></div>`;
@@ -830,7 +829,6 @@ function syncFilm() {
   $("v-box").textContent = "ISO " + LM.ISOS[f.box];
   $("film-ei").textContent = "EI " + LM.ISOS[filmEI()];
   $("v-push").textContent = f.push === 0 ? "Box speed" : (f.push > 0 ? "Push +" : "Pull −") + thirds(f.push);
-  $("film-dev").textContent = f.push === 0 ? "Normal" : (f.push > 0 ? "Push +" : "Pull −") + thirds(f.push) + (Math.abs(f.push) === 3 ? " stop" : " stops");
   $("v-years").textContent = f.years === 0 ? "In date" : f.years + (f.years === 1 ? " year" : " years");
   $("film-store").textContent = STORAGE.find(x => x.id === f.storage).name;
   $("film-extra").textContent = stopText(expiredThirds());
