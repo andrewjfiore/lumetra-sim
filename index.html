@@ -1,0 +1,766 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>[hidden]{display:none!important}body{margin:0}</style></head><body>
+<title>Lumetra Watch Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: instrument bench. Watch on the left as the object under test, location, conditions and the day curve on the right. */
+:root {
+  --bg: #eef0ea;
+  --panel: #f8f9f5;
+  --ink: #1d211b;
+  --muted: #5d6458;
+  --line: #d3d7cc;
+  --accent: #c98a00;
+  --accent-ink: #1d211b;
+  --exact: #4f6f8f;
+  --night: rgba(40, 52, 70, 0.08);
+  --warn: #b4441f;
+  --ok: #3d7a3a;
+  --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* watch is always OLED black */
+  --w-bg: #000;
+  --w-fg: #f4f4f0;
+  --w-dim: #8e928a;
+  --w-tile: #1c1d1b;
+  --w-tile-hi: #2b2c29;
+  --w-accent: #ffc233;
+  --w-live: #5ad16a;
+  --w-warn: #ff7a45;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141713; --panel: #1b1f1a; --ink: #e6e9e1; --muted: #9aa294; --line: #31372e;
+    --accent: #f0b429; --accent-ink: #141713; --exact: #8fb0d0; --night: rgba(150, 170, 200, 0.07);
+    --warn: #f08a5d; --ok: #7cc777;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141713; --panel: #1b1f1a; --ink: #e6e9e1; --muted: #9aa294; --line: #31372e;
+  --accent: #f0b429; --accent-ink: #141713; --exact: #8fb0d0; --night: rgba(150, 170, 200, 0.07);
+  --warn: #f08a5d; --ok: #7cc777;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1160px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(1.6rem, 3vw, 2.2rem); letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 62ch; }
+.bench { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 28px; align-items: start; }
+@media (max-width: 860px) { .bench { grid-template-columns: 1fr; } }
+
+/* Watch */
+.watch-col { display: grid; gap: 14px; justify-items: center; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); }
+@media (max-width: 860px) { .watch-col { position: static; } }
+.watch {
+  position: relative; width: min(100%, 330px); aspect-ratio: 41 / 49; max-width: 100%;
+  background: linear-gradient(145deg, #3a3d39, #1a1c19 60%, #2c2f2b); border-radius: 26%/22%; padding: 6.5%;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+.crown { position: absolute; right: -9px; top: 24%; width: 14px; height: 46px; border-radius: 6px; background: linear-gradient(90deg, #555a52, #2b2e29); }
+.crown::after { content: ""; position: absolute; left: 3px; top: 70px; width: 8px; height: 36px; border-radius: 4px; background: #2b2e29; }
+.screen {
+  width: 100%; height: 100%; background: var(--w-bg); border-radius: 20%/17%; overflow: hidden;
+  color: var(--w-fg); font-family: -apple-system, "SF Pro Text", var(--body); display: flex; flex-direction: column;
+}
+.bar { display: flex; justify-content: space-between; align-items: center; padding: 7% 10% 1%; font-size: 13px; min-height: 30px; }
+.bar .left { display: flex; align-items: center; gap: 6px; color: var(--w-accent); font-weight: 600; }
+.bar .clock { font-variant-numeric: tabular-nums; color: var(--w-fg); font-weight: 600; }
+.view { flex: 1; overflow-y: auto; padding: 0 6% 8%; scrollbar-width: none; }
+.view::-webkit-scrollbar { display: none; }
+
+.rows { display: grid; gap: 5px; }
+.row {
+  display: grid; grid-template-columns: 36px 1fr 28px; align-items: center; gap: 4px;
+  background: var(--w-tile); border-radius: 12px; padding: 3px 4px 3px 3px; min-height: 50px;
+}
+.ico { display: grid; justify-items: center; gap: 2px; color: var(--w-dim); }
+.ico svg { width: 18px; height: 18px; }
+.ico small { font-size: 8.5px; letter-spacing: 0.02em; line-height: 1; white-space: nowrap; }
+.strip {
+  display: flex; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none;
+  min-width: 0; height: 44px; align-items: center; outline: none; border-radius: 8px; cursor: grab; touch-action: pan-x;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+}
+.strip::-webkit-scrollbar { display: none; }
+.strip:focus-visible { box-shadow: inset 0 0 0 2px var(--w-accent); }
+.strip.locked { overflow-x: hidden; cursor: not-allowed; }
+.strip .pad { flex: 0 0 calc(50% - 29px); }
+.it {
+  flex: 0 0 58px; scroll-snap-align: center; text-align: center; color: var(--w-dim); font-size: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap; transition: color 120ms, font-size 120ms; user-select: none; cursor: pointer;
+}
+.it.on { color: var(--w-fg); font-size: 18px; }
+.strip.solve .it.on { color: var(--w-accent); }
+.it.sky { display: grid; justify-items: center; gap: 1px; font-size: 8.5px; font-weight: 500; line-height: 1.1; white-space: normal; }
+.it.sky svg { width: 20px; height: 20px; }
+.it.sky .ring { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; }
+.it.sky.live .ring { box-shadow: 0 0 0 2px var(--w-live); }
+.it.sky.on { font-size: 9px; color: var(--w-fg); }
+.lock { background: none; border: 0; color: var(--w-dim); width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.lock svg { width: 15px; height: 15px; }
+.lock[aria-pressed="true"] { color: var(--w-fg); background: #33342f; }
+.lock:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
+.evb { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.evb svg { width: 16px; height: 16px; }
+.evb .evb.dark { color: var(--w-warn); }
+.whint { font-size: 11px; color: var(--w-warn); text-align: center; min-height: 1.4em; padding-top: 3px; }
+.watch-note { font-size: 13px; color: var(--muted); text-align: center; max-width: 36ch; margin: 0; }
+.legend .ringkey { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ok); vertical-align: middle; margin-right: 6px; }
+@media (prefers-reduced-motion: no-preference) { .view > * { animation: rise 160ms ease-out; } }
+@keyframes rise { from { transform: translateY(6px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* Panels */
+.side { display: grid; gap: 20px; min-width: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; display: grid; gap: 16px; min-width: 0; }
+.panel h2 { font-family: var(--display); font-size: 1.05rem; margin: 0; font-weight: 600; }
+.ph { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; color: var(--ink); border-radius: 999px; padding: 6px 14px; font: 600 13px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.seg button svg { width: 15px; height: 15px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.places { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 5px 12px; font: 500 13px var(--body); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px; padding: 8px 14px; font: 600 14px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.btn svg { width: 16px; height: 16px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip:focus-visible, input:focus-visible, select:focus-visible, .btn:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 14px; }
+label { display: grid; gap: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+input, select {
+  font: 500 14px var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 9px; width: 100%; min-width: 0; text-transform: none; letter-spacing: 0;
+}
+input[type="file"] { font-family: var(--body); }
+.timerow { display: grid; gap: 6px; }
+.timerow .top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.timerow output { font: 600 15px var(--mono); color: var(--ink); letter-spacing: 0; }
+input[type="range"] { padding: 0; accent-color: var(--accent); background: transparent; border: 0; }
+input:disabled { opacity: 0.5; }
+.status { font-size: 14px; border-left: 3px solid var(--line); padding: 2px 0 2px 10px; margin: 0; }
+.status.ok { border-color: var(--ok); }
+.status.warn { border-color: var(--warn); }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.readout div { box-shadow: inset -1px -1px 0 var(--line); padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.readout span .ringkey { display: inline-block; width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ok); margin-right: 6px; vertical-align: 0; }
+.readout span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.readout b { font: 600 16px var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.chart-wrap { overflow-x: auto; }
+svg.chart { display: block; width: 100%; min-width: 520px; height: auto; cursor: crosshair; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+.foot { color: var(--muted); font-size: 13px; max-width: 75ch; margin: 0; }
+.howto { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; display: grid; gap: 4px; max-width: 70ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Lumetra Watch Simulator</h1>
+  </header>
+
+  <div class="bench">
+    <div class="watch-col">
+      <div class="watch" aria-label="Simulated Apple Watch">
+        <div class="crown" aria-hidden="true"></div>
+        <div class="screen">
+          <div class="bar"><span class="left" id="wleft">Lumetra</span><span class="clock" id="wclock">13:00</span></div>
+          <div class="view" id="view"></div>
+        </div>
+      </div>
+      <p class="watch-note">Swipe or scroll a dial sideways to turn it. Tap a padlock to hold that setting.</p>
+    </div>
+
+    <div class="side">
+      <section class="panel" aria-labelledby="loc-h">
+        <div class="ph">
+          <h2 id="loc-h">Location</h2>
+          <div class="seg" role="group" aria-label="GPS mode">
+            <button id="m-gps" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>GPS available</button>
+            <button id="m-man" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12z"/><path d="M4 4l16 16"/></svg>GPS unavailable</button>
+          </div>
+        </div>
+
+        <div id="gps-pane" hidden>
+          <div style="display:grid;gap:12px">
+            <div class="btns">
+              <button class="btn primary" id="use-here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>Use this device's location</button>
+              <label class="btn" for="gpx" style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--ink)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 18c3-6 6 2 9-4s5-6 7-4"/><circle cx="4" cy="18" r="2"/><circle cx="20" cy="10" r="2"/></svg>Load a GPS Trace file (.gpx)<input id="gpx" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden></label>
+            </div>
+            <div class="timerow" id="track-row" hidden>
+              <div class="top"><span>Track point</span><output id="track-out">1 of 1</output></div>
+              <input id="track" type="range" min="0" max="0" step="1" aria-label="Track point">
+            </div>
+            <p class="status" id="gps-status" hidden></p>
+          </div>
+        </div>
+
+        <div id="man-pane">
+          <div style="display:grid;gap:12px">
+            <div class="places" id="places"></div>
+            <div class="fields">
+              <label for="lat">Latitude<input id="lat" type="number" step="0.01" min="-66" max="66"></label>
+              <label for="lon">Longitude<input id="lon" type="number" step="0.01" min="-180" max="180"></label>
+              <label for="tz">Time zone<select id="tz"></select></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="fields">
+          <label for="date">Date<input id="date" type="date"></label>
+        </div>
+        <div class="timerow">
+          <div class="top"><span>Local time</span><output id="tout" for="time">13:00</output></div>
+          <input id="time" type="range" min="0" max="1435" step="5" aria-label="Local time">
+        </div>
+        <p class="status" id="wx-status" hidden></p>
+        <div class="readout">
+          <div><span>Sunrise</span><b id="r-rise">--</b></div>
+          <div><span>Sunset</span><b id="r-set">--</b></div>
+          <div><span>Sun elevation</span><b id="r-elev">--</b></div>
+          <div><span>Sky EV100</span><b id="r-ev">--</b></div>
+          <div><span><i class="ringkey" aria-hidden="true"></i>Live weather</span><b id="r-wx">--</b></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="day-h">
+        <h2 id="day-h">EV through the day</h2>
+        <div class="legend">
+          <span><i style="background:var(--accent)"></i>Shortcut estimate, selected sky</span>
+          <span><i style="background:var(--exact)"></i>Exact sun position, same sky</span>
+        </div>
+        <div class="chart-wrap"><svg class="chart" id="chart" viewBox="0 0 640 260" role="img" aria-label="EV100 across the day"></svg></div>
+        <p class="foot">Click the chart to jump to a time.</p>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<script id="engine">
+// Port of shortcut/lumetra.cherri. Keep in step with check_model.py.
+const LM = (() => {
+  const S = [-0.309, -0.2588, -0.2079, -0.1736, -0.1392, -0.1045, -0.0698, -0.0349, 0, 0.0523, 0.0872, 0.1736, 0.342, 0.5, 0.7071, 0.866, 1];
+  const V = [-12.02, -8.97, -4.64, -2.64, -0.64, 1.26, 3.26, 5.25, 7.32, 9.6, 11.08, 12.46, 13.6, 14.19, 14.72, 15.03, 15.24];
+  const LABELS = "30 s|25 s|20 s|15 s|13 s|10 s|8 s|6 s|5 s|4 s|3.2 s|2.5 s|2 s|1.6 s|1.3 s|1 s|0.8 s|0.6 s|0.5 s|0.4 s|0.3 s|1/4|1/5|1/6|1/8|1/10|1/13|1/15|1/20|1/25|1/30|1/40|1/50|1/60|1/80|1/100|1/125|1/160|1/200|1/250|1/320|1/400|1/500|1/640|1/800|1/1000|1/1250|1/1600|1/2000|1/2500|1/3200|1/4000|1/5000|1/6400|1/8000".split("|");
+  const DARK = "Cloud|Overcast|Rain|Drizzle|Snow|Fog|Storm|Shower|Sleet|Hail|Haz|Smok".split("|");
+  const CIVIL = -0.1045; // sin(-6 deg)
+
+  const bh = a => { const p = a * (180 - a); return 4 * p / (40500 - p); };
+  const sind = x => { x = ((x % 360) + 360) % 360; return x > 180 ? -bh(x - 180) : bh(x); };
+
+  function sinElev(lat, doy, now, rise, set) {
+    const sdec = -0.39779 * sind(0.98565 * (doy + 10) + 1.914 * sind(0.98565 * (doy - 2)) + 90);
+    const slat = sind(lat);
+    const ha = (now - (rise + set) / 2) / 4;
+    return slat * sdec + Math.sqrt(1 - slat * slat) * Math.sqrt(1 - sdec * sdec) * sind(ha + 90);
+  }
+  function ev100(sh) {
+    if (sh <= S[0]) return V[0];
+    for (let i = 1; i < S.length; i++) if (sh <= S[i]) return V[i - 1] + (sh - S[i - 1]) / (S[i] - S[i - 1]) * (V[i] - V[i - 1]);
+    return V[V.length - 1];
+  }
+  function cloud(cond) {
+    const c = cond.toLowerCase(); let v = 0;
+    if (DARK.some(k => c.includes(k.toLowerCase()))) v = -2;
+    if (c.includes("mostly cloudy")) v = -0.51;
+    if (c.includes("partly")) v = -0.11;
+    if (c.includes("mostly clear") || c.includes("mostly sunny")) v = -0.01;
+    return v;
+  }
+  // The shortcut's full result screen, kept for the regression check against the compiled plist
+  function meter({ iso, f, lat, doy, now, rise, set, cond }) {
+    const sh = sinElev(lat, doy, now, rise, set);
+    const ev = ev100(sh) + cloud(cond);
+    const t = f * f * 100 / (iso * Math.pow(2, ev));
+    const idx = Math.round(-3 * Math.log10(t) / 0.30103) + 16;
+    let shutter = idx > 55 ? "over 1/8000, stop down" : idx < 1 ? (t > 2700 ? "Too dark, meter the scene" : `about ${Math.pow(2, Math.round(Math.log2(t / 60)))} min`) : LABELS[idx - 1];
+    if (sh <= CIVIL) shutter = "Too dark, meter the scene";
+    return { ev, t, sh, shutter, evShown: Math.round(ev * 10) / 10 };
+  }
+
+  // NOAA general solar position, for the comparison line and manual-mode sunrise/sunset
+  function noaa(lat, lon, doy, utcMin) {
+    const g = 2 * Math.PI / 365 * (doy - 1 + (utcMin / 60 - 12) / 24);
+    const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const d = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const ha = ((utcMin + eq + 4 * lon) / 4 - 180) * Math.PI / 180, la = lat * Math.PI / 180;
+    return { sinh: Math.sin(la) * Math.sin(d) + Math.cos(la) * Math.cos(d) * Math.cos(ha), eq, d };
+  }
+  function sunEvents(lat, lon, doy, tzMin) {
+    const { eq, d } = noaa(lat, lon, doy, 720 - tzMin);
+    const la = lat * Math.PI / 180;
+    const c = Math.cos(90.833 * Math.PI / 180) / (Math.cos(la) * Math.cos(d)) - Math.tan(la) * Math.tan(d);
+    if (c > 1 || c < -1) return null;
+    const ha = Math.acos(c) * 180 / Math.PI;
+    return { rise: 720 - 4 * (lon + ha) - eq + tzMin, set: 720 - 4 * (lon - ha) - eq + tzMin };
+  }
+
+  // Dials in third stops. Aperture index 0 = f/1, ISO index 6 = ISO 100, shutter k: t = 2^(-k/3), k = 0 is 1 s.
+  const APERTURES = "1|1.1|1.2|1.4|1.6|1.8|2|2.2|2.5|2.8|3.2|3.5|4|4.5|5|5.6|6.3|7.1|8|9|10|11|13|14|16|18|20|22|25|29|32|36|40|45|51|57|64".split("|");
+  const ISOS = "25|32|40|50|64|80|100|125|160|200|250|320|400|500|640|800|1000|1250|1600|2000|2500|3200|4000|5000|6400".split("|");
+  const K_MIN = -35, K_MAX = 39; // about 45 min to 1/8000
+  function shutterLabel(k) {
+    if (k >= -15) return LABELS[k + 15];
+    const t = Math.pow(2, -k / 3);
+    return `about ${Math.pow(2, Math.round(Math.log2(t / 60)))} min`;
+  }
+  // Balance: fIdx + k = 3 * EV100 + isoIdx - 6. Returns the free dial's new index and any leftover thirds.
+  function solve(dial, d, ev100v) {
+    const target = Math.round(3 * ev100v) + d.iso - 6;
+    if (dial === "shutter") { const want = target - d.f; const k = Math.max(K_MIN, Math.min(K_MAX, want)); return { v: k, off: want - k }; }
+    if (dial === "f") { const want = target - d.shutter; const f = Math.max(0, Math.min(APERTURES.length - 1, want)); return { v: f, off: want - f }; }
+    const want = d.f + d.shutter - Math.round(3 * ev100v) + 6; const i = Math.max(0, Math.min(ISOS.length - 1, want)); return { v: i, off: -(want - i) };
+  }
+  // Positive = settings let in more light than the sky calls for (overexposed), in thirds
+  const offset = (d, ev100v) => Math.round(3 * ev100v) + d.iso - 6 - d.f - d.shutter;
+  return { meter, sinElev, ev100, cloud, noaa, sunEvents, LABELS, APERTURES, ISOS, K_MIN, K_MAX, shutterLabel, solve, offset, CIVIL };
+})();
+if (typeof module !== "undefined") module.exports = LM;
+</script>
+
+<script>
+const $ = id => document.getElementById(id);
+const svg = (body, vb = "0 0 24 24") => `<svg viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICON = {
+  shutter: svg('<circle cx="12" cy="13" r="8"/><path d="M12 13V9M10 2h4M19 6l-1.5 1.5"/>'),
+  f: svg('<circle cx="12" cy="12" r="9"/><path d="M12 3l3 7M21 12l-7 2M16.5 20l-4-6M5 19.5l5-5.5M3.5 8l7 2.5M9.5 3.3L10 10"/>'),
+  iso: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><rect x="8" y="9" width="8" height="6" rx="1"/>'),
+  ev: svg('<path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17l4-6"/><circle cx="12" cy="17" r="1.2"/>'),
+  lock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
+  unlock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>'),
+  back: svg('<path d="M15 5l-7 7 7 7"/>'),
+};
+const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+const MOON = '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>';
+const CLOUD = '<path d="M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 18z"/>';
+const SKY = {
+  sun: svg(SUN), moon: svg(MOON),
+  sunsmall: svg('<circle cx="9" cy="9" r="3.5"/><path d="M9 2.5v1.5M2.5 9H4M4.4 4.4l1 1M13.6 4.4l-1 1"/><path d="M9 20h8a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-8.9 1.2A2.9 2.9 0 0 0 9 20z" opacity=".55"/>'),
+  moonsmall: svg('<path d="M14 9.5A5.5 5.5 0 0 1 7 2.6a5.5 5.5 0 1 0 7 6.9z"/><path d="M9 20h8a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-8.9 1.2A2.9 2.9 0 0 0 9 20z" opacity=".55"/>'),
+  sunpart: svg('<circle cx="8" cy="8" r="3.5"/><path d="M8 2v1.5M2 8h1.5M3.8 3.8l1 1M12.2 3.8l-1 1"/><path d="M8 20h9a4 4 0 0 0 .5-8 6 6 0 0 0-10 1.6A3.3 3.3 0 0 0 8 20z"/>'),
+  moonpart: svg('<path d="M13 8.5A5 5 0 0 1 6.5 2a5 5 0 1 0 6.5 6.5z"/><path d="M8 20h9a4 4 0 0 0 .5-8 6 6 0 0 0-10 1.6A3.3 3.3 0 0 0 8 20z"/>'),
+  cloud: svg(CLOUD),
+  clouds: svg('<path d="M9 7.5a5 5 0 0 1 9.4 1.6A3.3 3.3 0 0 1 19 15.5"/>' + CLOUD.replace('M7 18', 'M5 20').replace('a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 18z', 'a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 5 20z')),
+  fog: svg('<path d="M7 13h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 13z"/><path d="M4 17h16M6 21h12"/>'),
+  haze: svg('<path d="M3 8h14M5 12h16M3 16h14M7 20h10"/>'),
+  drizzle: svg('<path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 15z"/><path d="M9 18v1M13 18v1M17 18v1M11 21v1M15 21v1"/>'),
+  rain: svg('<path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 15z"/><path d="M9 17l-1 4M13 17l-1 4M17 17l-1 4"/>'),
+  snow: svg('<path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 15z"/><path d="M9 18.5h.01M13 18.5h.01M17 18.5h.01M11 21.5h.01M15 21.5h.01" stroke-width="2.6"/>'),
+  storm: svg('<path d="M7 15h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.4 1.6A3.3 3.3 0 0 0 7 15z"/><path d="M12 15l-2 4h4l-2 4"/>'),
+};
+// Day name, night name, icons. Sunny and Mostly Sunny only exist while the sun is up, like the Weather app.
+const SKIES = [
+  { id: "clear", day: "Sunny", night: "Clear", di: "sun", ni: "moon" },
+  { id: "mclear", day: "Mostly Sunny", night: "Mostly Clear", di: "sunsmall", ni: "moonsmall" },
+  { id: "part", day: "Partly Cloudy", night: "Partly Cloudy", di: "sunpart", ni: "moonpart" },
+  { id: "mcloud", day: "Mostly Cloudy", night: "Mostly Cloudy", di: "clouds", ni: "clouds" },
+  { id: "cloud", day: "Cloudy", night: "Cloudy", di: "cloud", ni: "cloud" },
+  { id: "fog", day: "Foggy", night: "Foggy", di: "fog", ni: "fog" },
+  { id: "haze", day: "Haze", night: "Haze", di: "haze", ni: "haze" },
+  { id: "drizzle", day: "Drizzle", night: "Drizzle", di: "drizzle", ni: "drizzle" },
+  { id: "rain", day: "Rain", night: "Rain", di: "rain", ni: "rain" },
+  { id: "snow", day: "Snow", night: "Snow", di: "snow", ni: "snow" },
+  { id: "storm", day: "Thunderstorms", night: "Thunderstorms", di: "storm", ni: "storm" },
+];
+// WMO weather code (Open-Meteo) to a sky id
+function wmoSky(code, cover) {
+  if (code === 0) return "clear";
+  if (code === 1) return "mclear";
+  if (code === 2) return "part";
+  if (code === 3) return cover != null && cover < 88 ? "mcloud" : "cloud";
+  if (code === 45 || code === 48) return "fog";
+  if (code >= 51 && code <= 57) return "drizzle";
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
+  if (code >= 95) return "storm";
+  return null;
+}
+
+const PLACES = [
+  { name: "Rutland, MA", lat: 42.37, lon: -71.95, tz: "America/New_York" },
+  { name: "Fort Myers, FL", lat: 26.64, lon: -81.87, tz: "America/New_York" },
+  { name: "Reykjavik", lat: 64.15, lon: -21.94, tz: "Atlantic/Reykjavik" },
+  { name: "Sydney", lat: -33.87, lon: 151.21, tz: "Australia/Sydney" },
+  { name: "Nairobi", lat: -1.29, lon: 36.82, tz: "Africa/Nairobi" },
+];
+
+const browserTz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York"; } catch { return "America/New_York"; } })();
+const st = {
+  mode: "man", lat: 42.37, lon: -71.95, tz: "America/New_York", date: "", time: 780,
+  sky: "clear", live: null, wxNote: "", track: null, trackIdx: 0, follow: false,
+  dials: { shutter: 0, f: 24, iso: 6 }, locks: { shutter: false, f: false, iso: true },
+  hint: "",
+};
+
+const hhmm = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
+const doyOf = s => { const d = new Date(s + "T12:00:00Z"); return Math.round((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1; };
+function tzOffsetMin(zone, dateStr) {
+  try {
+    const p = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" }).formatToParts(new Date(dateStr + "T12:00:00Z"));
+    const m = (p.find(x => x.type === "timeZoneName") || {}).value.match(/GMT([+-])(\d{2}):?(\d{2})?/);
+    return m ? (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +(m[3] || 0)) : 0;
+  } catch { return 0; }
+}
+function localParts(zone, when = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(when).map(x => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: +p.hour * 60 + +p.minute };
+}
+
+// Everything the meter needs for the current place and time
+function ctx() {
+  const doy = doyOf(st.date);
+  let rise, set, polar = false;
+  const lv = st.live && st.live.date === st.date ? st.live : null;
+  if (lv && lv.rise != null) { rise = lv.rise; set = lv.set; }
+  else {
+    const ev = LM.sunEvents(st.lat, st.lon, doy, tzOffsetMin(st.tz, st.date));
+    if (ev) { rise = Math.floor(ev.rise); set = Math.floor(ev.set); } else polar = true;
+  }
+  const exact = LM.noaa(st.lat, st.lon, doy, st.time - tzOffsetMin(st.tz, st.date)).sinh;
+  const isDay = exact > Math.sin(-0.833 * Math.PI / 180);
+  if (polar) return { doy, polar, exact, isDay };
+  const sh = LM.sinElev(st.lat, doy, st.time, rise, set);
+  return { doy, rise, set, sh, exact, isDay, dark: sh <= LM.CIVIL };
+}
+const skyName = (id, isDay) => { const s = SKIES.find(x => x.id === id); return isDay ? s.day : s.night; };
+const skyIcon = (id, isDay) => { const s = SKIES.find(x => x.id === id); return SKY[isDay ? s.di : s.ni]; };
+function liveSkyNow() {
+  if (!st.live || st.live.date !== st.date || !st.live.hourly) return null;
+  return st.live.hourly[Math.min(23, Math.floor(st.time / 60))] || null;
+}
+function sceneEV(c) { return LM.ev100(c.sh) + LM.cloud(skyName(st.sky, c.isDay)); }
+
+// Keep the exposure balanced after the sky or time changes: first unlocked dial in priority follows
+function rebalance() {
+  const c = ctx(); if (c.polar || c.dark) return;
+  const free = ["shutter", "f", "iso"].find(d => !st.locks[d]);
+  if (!free) return;
+  st.dials[free] = LM.solve(free, st.dials, sceneEV(c)).v;
+}
+function turn(dial, delta) {
+  const c = ctx();
+  const ranges = { shutter: [LM.K_MIN, LM.K_MAX], f: [0, LM.APERTURES.length - 1], iso: [0, LM.ISOS.length - 1] };
+  if (st.locks[dial]) { st.hint = "Locked. Tap the padlock to unlock."; return; }
+  const next = st.dials[dial] + delta;
+  if (next < ranges[dial][0] || next > ranges[dial][1]) { st.hint = "End of the dial."; return; }
+  if (c.polar || c.dark) { st.dials[dial] = next; st.hint = ""; return; }
+  const follower = ["shutter", "f", "iso"].find(d => d !== dial && !st.locks[d]);
+  if (!follower) { st.hint = "Unlock one more dial so this one can turn."; return; }
+  const trial = { ...st.dials, [dial]: next };
+  const r = LM.solve(follower, trial, sceneEV(c));
+  if (r.off !== 0 && r.v === st.dials[follower]) { st.hint = `${label(follower)} is at the end of its range.`; return; }
+  st.dials = { ...trial, [follower]: r.v }; st.hint = "";
+}
+const label = d => ({ shutter: "Shutter", f: "Aperture", iso: "ISO" })[d];
+const dialText = d => d === "shutter" ? LM.shutterLabel(st.dials.shutter) : d === "f" ? "f/" + LM.APERTURES[st.dials.f] : LM.ISOS[st.dials.iso];
+function thirds(n) {
+  const a = Math.abs(n), whole = Math.floor(a / 3), r = a % 3;
+  return (whole ? whole : "") + (r ? (whole ? " " : "") + r + "/3" : "") || "0";
+}
+
+/* Watch */
+const DIALS = ["shutter", "f", "iso"];
+const IW = 58;
+const items = d => d === "shutter" ? Array.from({ length: LM.K_MAX - LM.K_MIN + 1 }, (_, i) => LM.shutterLabel(LM.K_MIN + i))
+  : d === "f" ? LM.APERTURES.map(a => "f/" + a) : LM.ISOS.slice();
+const toIdx = (d, v) => d === "shutter" ? v - LM.K_MIN : v;
+const fromIdx = (d, i) => d === "shutter" ? i + LM.K_MIN : i;
+const maxIdx = d => d === "sky" ? SKIES.length - 1 : items(d).length - 1;
+let hintTimer = null, lastDay = null, lastLive;
+
+function flash(msg) {
+  const h = $("whint"); if (!h) return;
+  h.textContent = msg; clearTimeout(hintTimer); hintTimer = setTimeout(() => { h.textContent = ""; }, 2600);
+}
+function stripHTML(d) {
+  return `<span class="pad"></span>` + items(d).map((t, i) => `<span class="it" data-i="${i}">${t}</span>`).join("") + `<span class="pad"></span>`;
+}
+function skyHTML(isDay, liveId) {
+  return `<span class="pad"></span>` + SKIES.map((s, i) => `<span class="it sky${liveId === s.id ? " live" : ""}" data-i="${i}"${liveId === s.id ? ' title="Live weather now"' : ""}><span class="ring">${SKY[isDay ? s.di : s.ni]}</span>${isDay ? s.day : s.night}</span>`).join("") + `<span class="pad"></span>`;
+}
+function buildWatch() {
+  const c = ctx(); lastDay = c.isDay; lastLive = liveSkyNow();
+  $("view").innerHTML = `<div class="rows">
+    ${DIALS.map(d => `<div class="row"><span class="ico">${ICON[d]}<small>${label(d)}</small></span>
+      <div class="strip" id="s-${d}" data-d="${d}" tabindex="0" role="slider" aria-label="${label(d)}">${stripHTML(d)}</div>
+      <button class="lock" id="l-${d}"></button></div>`).join("")}
+    <div class="row"><span class="ico" id="sky-ico"></span>
+      <div class="strip" id="s-sky" data-d="sky" tabindex="0" role="slider" aria-label="Sky">${skyHTML(c.isDay, lastLive)}</div><span></span></div>
+  </div><div class="whint" id="whint" aria-live="polite"></div>`;
+  for (const d of [...DIALS, "sky"]) wireStrip($("s-" + d));
+  DIALS.forEach(d => $("l-" + d).onclick = () => { st.locks[d] = !st.locks[d]; renderAll(); });
+  syncWatch(false);
+}
+function curIdx(d) { return d === "sky" ? SKIES.findIndex(s => s.id === st.sky) : toIdx(d, st.dials[d]); }
+// Move dial d to item i if the meter allows it
+function choose(d, i) {
+  if (d === "sky") { st.sky = SKIES[i].id; st.skyTouched = true; rebalance(); return; }
+  if (st.locks[d]) { flash(`${label(d)} is locked. Tap its padlock.`); return; }
+  turn(d, fromIdx(d, i) - st.dials[d]);
+  if (st.hint) { flash(st.hint); st.hint = ""; }
+}
+function step(d, dir) {
+  const i = Math.max(0, Math.min(maxIdx(d), curIdx(d) + dir));
+  if (i !== curIdx(d)) choose(d, i);
+  renderAll();
+}
+function wireStrip(el) {
+  const d = el.dataset.d;
+  let timer = null, last = 0;
+  el.addEventListener("scroll", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (el._target != null && Math.abs(el.scrollLeft - el._target) < 3) { el._target = null; return; }
+      el._target = null;
+      const i = Math.max(0, Math.min(maxIdx(d), Math.round(el.scrollLeft / IW)));
+      if (i !== curIdx(d)) choose(d, i);
+      renderAll();
+    }, 140);
+  }, { passive: true });
+  // Mouse wheel and arrow keys step one item at a time, like the Digital Crown
+  el.addEventListener("wheel", e => {
+    e.preventDefault();
+    const now = Date.now(); if (now - last < 90) return; last = now;
+    step(d, (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) > 0 ? 1 : -1);
+  }, { passive: false });
+  el.addEventListener("keydown", e => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); step(d, e.key === "ArrowRight" ? 1 : -1); }
+  });
+  el.addEventListener("click", e => {
+    const it = e.target.closest(".it"); if (!it) return;
+    const i = +it.dataset.i; if (i !== curIdx(d)) choose(d, i);
+    renderAll();
+  });
+}
+function place(el, i, smooth) {
+  const left = i * IW;
+  if (Math.abs(el.scrollLeft - left) < 2) return;
+  el._target = left;
+  el.scrollTo({ left, behavior: smooth ? "smooth" : "auto" });
+}
+function syncWatch(smooth = true) {
+  const c = ctx(), liveId = liveSkyNow();
+  if (c.isDay !== lastDay || liveId !== lastLive) {
+    lastDay = c.isDay; lastLive = liveId;
+    $("s-sky").innerHTML = skyHTML(c.isDay, liveId);
+  }
+  $("wclock").textContent = hhmm(st.time);
+  const free = DIALS.find(d => !st.locks[d]);
+  for (const d of [...DIALS, "sky"]) {
+    const el = $("s-" + d), i = curIdx(d);
+    el.querySelectorAll(".it").forEach(it => it.classList.toggle("on", +it.dataset.i === i));
+    if (d !== "sky") {
+      el.classList.toggle("locked", st.locks[d]);
+      el.classList.toggle("solve", free === d && !c.dark && !c.polar);
+      el.setAttribute("aria-valuetext", dialText(d));
+      const lb = $("l-" + d);
+      lb.setAttribute("aria-pressed", st.locks[d]); lb.innerHTML = st.locks[d] ? ICON.lock : ICON.unlock;
+      lb.setAttribute("aria-label", (st.locks[d] ? "Unlock " : "Lock ") + label(d));
+    } else {
+      el.setAttribute("aria-valuetext", skyName(st.sky, c.isDay));
+      $("sky-ico").innerHTML = `${skyIcon(st.sky, c.isDay)}<small>Sky</small>`;
+    }
+    place(el, i, smooth);
+  }
+  // EV sits in the status bar as an icon and a number
+  let ev;
+  if (c.polar) ev = `<span class="evb dark">${ICON.ev}No sun</span>`;
+  else if (c.dark) ev = `<span class="evb dark">${ICON.ev}Too dark</span>`;
+  else {
+    const e = sceneEV(c), off = LM.offset(st.dials, e);
+    ev = `<span class="evb" title="Exposure value">${ICON.ev}EV ${(Math.round(e * 10) / 10).toFixed(1)}${off ? ` <span class="dev">${off > 0 ? "+" : "−"}${thirds(off)}</span>` : ""}</span>`;
+  }
+  $("wleft").innerHTML = ev;
+}
+function renderWatch() { if (!$("s-shutter")) buildWatch(); else syncWatch(); }
+
+/* Panel */
+function renderPanel() {
+  const c = ctx();
+  $("tout").value = hhmm(st.time);
+  $("r-rise").textContent = c.polar ? "none" : hhmm(c.rise);
+  $("r-set").textContent = c.polar ? "none" : hhmm(c.set);
+  $("r-elev").textContent = (Math.asin(c.exact) * 180 / Math.PI).toFixed(1) + "°";
+  $("r-ev").textContent = c.polar ? "--" : c.dark ? "too dark" : sceneEV(c).toFixed(2);
+  const liveId = liveSkyNow();
+  $("r-wx").textContent = liveId ? skyName(liveId, c.isDay) : "none";
+  const ws = $("wx-status");
+  ws.hidden = !st.wxNote; ws.textContent = st.wxNote; ws.className = "status " + (st.live ? "ok" : "warn");
+  $("time").disabled = st.follow; $("date").disabled = st.follow;
+}
+
+function renderChart() {
+  const svgEl = $("chart"), c = ctx();
+  const W = 640, H = 260, L = 44, R = 12, T = 12, B = 30;
+  const x = m => L + m / 1440 * (W - L - R);
+  const lo = -6, hi = 16, y = ev => T + (hi - Math.max(lo, Math.min(hi, ev))) / (hi - lo) * (H - T - B);
+  const off = tzOffsetMin(st.tz, st.date);
+  let s = "";
+  if (!c.polar) {
+    s += `<rect x="${x(0)}" y="${T}" width="${Math.max(0, x(c.rise) - x(0))}" height="${H - T - B}" fill="var(--night)"/>`;
+    s += `<rect x="${x(c.set)}" y="${T}" width="${Math.max(0, x(1440) - x(c.set))}" height="${H - T - B}" fill="var(--night)"/>`;
+  }
+  for (let ev = lo; ev <= hi; ev += 2) {
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(ev)}" y2="${y(ev)}" stroke="var(--line)" stroke-width="1"/>`;
+    s += `<text x="${L - 8}" y="${y(ev) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--mono)">${ev}</text>`;
+  }
+  for (let h = 0; h <= 24; h += 3) s += `<text x="${x(h * 60)}" y="${H - 10}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--mono)">${String(h).padStart(2, "0")}:00</text>`;
+  s += `<text x="${L - 34}" y="${T + 4}" font-size="10" fill="var(--muted)" font-family="var(--mono)">EV</text>`;
+  if (!c.polar) {
+    let pe = "", ps = "", pen = false;
+    for (let m = 0; m <= 1440; m += 10) {
+      const ex = LM.noaa(st.lat, st.lon, c.doy, m - off).sinh;
+      const day = ex > Math.sin(-0.833 * Math.PI / 180);
+      const cl = LM.cloud(skyName(st.sky, day));
+      pe += (m ? "L" : "M") + x(m).toFixed(1) + "," + y(LM.ev100(ex) + cl).toFixed(1);
+      const sh = LM.sinElev(st.lat, c.doy, m, c.rise, c.set);
+      if (sh > LM.CIVIL) { ps += (pen ? "L" : "M") + x(m).toFixed(1) + "," + y(LM.ev100(sh) + cl).toFixed(1); pen = true; } else pen = false;
+    }
+    s += `<path d="${pe}" fill="none" stroke="var(--exact)" stroke-width="2" stroke-dasharray="5 4"/>`;
+    s += `<path d="${ps}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>`;
+    s += `<line x1="${x(st.time)}" x2="${x(st.time)}" y1="${T}" y2="${H - B}" stroke="var(--ink)" stroke-width="1" opacity="0.4"/>`;
+    if (!c.dark) s += `<circle cx="${x(st.time)}" cy="${y(sceneEV(c))}" r="5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`;
+  } else {
+    s += `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-size="14" fill="var(--muted)">No sunrise or sunset on this date at this latitude</text>`;
+  }
+  svgEl.innerHTML = s;
+}
+$("chart").onclick = e => {
+  if (st.follow) return;
+  const r = $("chart").getBoundingClientRect(), px = (e.clientX - r.left) / r.width * 640;
+  st.time = Math.max(0, Math.min(1435, Math.round(((px - 44) / (640 - 56) * 1440) / 5) * 5));
+  $("time").value = st.time; changed();
+};
+
+function renderAll() { renderPanel(); renderChart(); renderWatch(); }
+function changed() { applyLiveSky(); rebalance(); renderAll(); }
+
+/* Live weather: Open-Meteo, keyless. Blocked inside the claude.ai viewer, works from a normal web host. */
+let lastFetchKey = "";
+async function fetchWeather() {
+  const key = `${st.lat.toFixed(3)},${st.lon.toFixed(3)},${st.date}`;
+  if (key === lastFetchKey) return; lastFetchKey = key;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${st.lat}&longitude=${st.lon}&hourly=weather_code,cloud_cover&daily=sunrise,sunset&timezone=auto&start_date=${st.date}&end_date=${st.date}`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    const mins = s => { const t = s.split("T")[1]; return +t.slice(0, 2) * 60 + +t.slice(3, 5); };
+    st.live = {
+      date: st.date,
+      rise: j.daily.sunrise[0] ? mins(j.daily.sunrise[0]) : null,
+      set: j.daily.sunset[0] ? mins(j.daily.sunset[0]) : null,
+      hourly: j.hourly.weather_code.map((w, i) => wmoSky(w, j.hourly.cloud_cover[i])),
+    };
+    if (j.timezone && st.tz !== j.timezone) { st.tz = j.timezone; fillTz(); }
+    st.wxNote = "";
+    st.skyTouched = false;
+  } catch {
+    st.live = null;
+    st.wxNote = "For live weather, open localhost:8139/lumetra-sim.html on your PC, or set the sky dial by hand.";
+  }
+  changed();
+}
+function applyLiveSky() {
+  const id = liveSkyNow();
+  if (id && !st.skyTouched) st.sky = id;
+}
+
+/* Modes */
+function setMode(m) {
+  st.mode = m;
+  $("m-gps").setAttribute("aria-pressed", m === "gps"); $("m-man").setAttribute("aria-pressed", m === "man");
+  $("gps-pane").hidden = m !== "gps"; $("man-pane").hidden = m !== "man";
+  if (m === "man") { st.follow = false; st.live = null; st.wxNote = ""; lastFetchKey = ""; }
+  changed();
+}
+$("m-gps").onclick = () => setMode("gps");
+$("m-man").onclick = () => setMode("man");
+
+function gpsStatus(text, ok) { const el = $("gps-status"); el.hidden = !text; el.textContent = text; el.className = "status " + (ok ? "ok" : "warn"); }
+let clockTimer = null;
+function followNow() {
+  const p = localParts(st.tz); st.date = p.date; st.time = p.time; $("date").value = st.date; $("time").value = st.time;
+}
+$("use-here").onclick = () => {
+  if (!navigator.geolocation) { gpsStatus("This browser has no location service. Load a GPS Trace file instead.", false); return; }
+  gpsStatus("", true);
+  navigator.geolocation.getCurrentPosition(pos => {
+    st.lat = pos.coords.latitude; st.lon = pos.coords.longitude; st.tz = browserTz; st.track = null; $("track-row").hidden = true;
+    st.follow = true; followNow(); fillTz();
+    clearInterval(clockTimer); clockTimer = setInterval(() => { if (st.follow) { followNow(); changed(); } }, 30000);
+    gpsStatus(`${st.lat.toFixed(5)}, ${st.lon.toFixed(5)} \u00b1${Math.round(pos.coords.accuracy)} m`, true);
+    fetchWeather(); changed();
+  }, err => {
+    gpsStatus(err.code === 1 ? "For your location, open localhost:8139/lumetra-sim.html on your PC, or load a GPX file from GPS Trace." : "No location fix: " + err.message, false);
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+};
+$("gpx").onchange = async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const doc = new DOMParser().parseFromString(await file.text(), "application/xml");
+    const pts = [...doc.querySelectorAll("trkpt, rtept, wpt")].map(p => ({
+      lat: +p.getAttribute("lat"), lon: +p.getAttribute("lon"),
+      t: p.querySelector("time") ? new Date(p.querySelector("time").textContent) : null,
+    })).filter(p => isFinite(p.lat) && isFinite(p.lon));
+    if (!pts.length) throw new Error("no points");
+    st.track = pts; st.follow = false; clearInterval(clockTimer);
+    $("track").max = pts.length - 1; $("track").value = pts.length - 1; $("track-row").hidden = false;
+    gpsStatus(`${pts.length} points. Drag the track slider to move along it.`, true);
+    useTrackPoint(pts.length - 1);
+  } catch { gpsStatus("That file has no GPS points. Export the track from GPS Trace as GPX and try again.", false); }
+};
+function useTrackPoint(i) {
+  const p = st.track[i]; st.trackIdx = i;
+  st.lat = p.lat; st.lon = p.lon;
+  if (p.t && !isNaN(p.t)) { const lp = localParts(st.tz, p.t); st.date = lp.date; st.time = Math.round(lp.time / 5) * 5; $("date").value = st.date; $("time").value = st.time; }
+  $("track-out").value = `${i + 1} of ${st.track.length}` + (p.t && !isNaN(p.t) ? ", " + p.t.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "");
+  fetchWeather(); changed();
+}
+$("track").oninput = () => useTrackPoint(+$("track").value);
+
+/* Manual inputs */
+function fillTz() {
+  let zones = [];
+  try { zones = Intl.supportedValuesOf("timeZone"); } catch { zones = [...new Set(PLACES.map(p => p.tz).concat(browserTz))]; }
+  if (!zones.includes(st.tz)) zones.unshift(st.tz);
+  const off = z => { const m = tzOffsetMin(z, st.date || "2026-01-01"); return `UTC${m < 0 ? "-" : "+"}${String(Math.floor(Math.abs(m) / 60)).padStart(2, "0")}:${String(Math.abs(m) % 60).padStart(2, "0")}`; };
+  $("tz").innerHTML = zones.map(z => `<option value="${z}"${z === st.tz ? " selected" : ""}>${z.replace(/_/g, " ")} (${off(z)})</option>`).join("");
+}
+function init() {
+  $("places").innerHTML = PLACES.map((p, i) => `<button class="chip" data-i="${i}" aria-pressed="${i === 0}">${p.name}</button>`).join("");
+  $("places").querySelectorAll(".chip").forEach(b => b.onclick = () => {
+    const p = PLACES[+b.dataset.i];
+    Object.assign(st, { lat: p.lat, lon: p.lon, tz: p.tz });
+    $("lat").value = p.lat; $("lon").value = p.lon; fillTz();
+    $("places").querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === b));
+    changed();
+  });
+  const today = localParts(st.tz); st.date = today.date;
+  $("lat").value = st.lat; $("lon").value = st.lon; $("date").value = st.date; $("time").value = st.time;
+  fillTz();
+  const manual = () => $("places").querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", "false"));
+  ["lat", "lon"].forEach(id => $(id).oninput = () => { const n = parseFloat($(id).value); if (!isNaN(n)) { st[id] = n; manual(); changed(); } });
+  $("tz").onchange = () => { st.tz = $("tz").value; manual(); changed(); };
+  $("date").oninput = () => { if ($("date").value) { st.date = $("date").value; fillTz(); if (st.mode === "gps") fetchWeather(); changed(); } };
+  $("time").oninput = () => { st.time = +$("time").value; changed(); };
+  // Sky dial picked by hand overrides live weather until the place or date changes
+  document.addEventListener("click", e => { if (e.target.closest("[data-sky]")) st.skyTouched = true; }, true);
+  rebalance(); renderAll();
+}
+init();
+</script>
+
+</body></html>
