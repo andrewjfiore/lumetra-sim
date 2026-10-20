@@ -83,7 +83,33 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .bar { display: flex; justify-content: space-between; align-items: center; padding: 5.5% 9% 1.5%; font-size: 13px; min-height: 26px; }
 .bar .left { display: flex; align-items: center; gap: 6px; color: var(--w-accent); font-weight: 600; }
 .bar .clock { font-variant-numeric: tabular-nums; color: var(--w-fg); font-weight: 600; }
-.view { flex: 1; overflow-y: auto; padding: 0 4.5% 5.5%; position: relative; display: flex; flex-direction: column; scrollbar-width: none; }
+.view { flex: 1; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; position: relative; scrollbar-width: none; }
+.page { height: 100%; scroll-snap-align: start; scroll-snap-stop: always; padding: 0 6% 5.5% 4.5%; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.pdots { position: absolute; right: 3.2%; top: 50%; transform: translateY(-50%); display: grid; gap: 5px; z-index: 2; }
+.pdots button { width: 6px; height: 6px; border-radius: 50%; border: 0; padding: 0; background: #4a4c47; cursor: pointer; }
+.pdots button[aria-current="true"] { background: var(--w-fg); height: 12px; border-radius: 3px; }
+.pdots button:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
+.screen { position: relative; }
+.ptitle { font-size: 13px; font-weight: 650; margin: 0 0 4px 2px; display: flex; align-items: center; gap: 5px; }
+.ptitle svg { width: 15px; height: 15px; }
+.dl { display: grid; gap: 1px; font-size: 12px; }
+.dl > div { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 6px; padding: 4px 4px; border-bottom: 1px solid #1c1d1b; }
+.dl svg { width: 14px; height: 14px; }
+.dl span { color: var(--w-dim); }
+.dl b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.set { display: grid; gap: 3px; overflow-y: auto; scrollbar-width: none; }
+.set::-webkit-scrollbar { display: none; }
+.srow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; background: var(--w-tile); border-radius: 10px; padding: 4px 6px 4px 9px; font-size: 11.5px; }
+.srow > span { color: var(--w-dim); line-height: 1.15; }
+.stp { display: grid; grid-template-columns: 24px minmax(46px, auto) 24px; align-items: center; gap: 2px; }
+.stp b { text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stp button, .tog { width: 24px; height: 24px; border-radius: 50%; border: 0; background: #33342f; color: var(--w-fg); font: 600 15px/1 inherit; font-family: inherit; cursor: pointer; padding: 0; }
+.tog { width: 44px; height: 24px; border-radius: 12px; position: relative; background: #3a3b37; }
+.tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left 140ms; }
+.tog[aria-checked="true"] { background: var(--w-live); }
+.tog[aria-checked="true"]::after { left: 23px; }
+.stp button:focus-visible, .tog:focus-visible, .sreset:focus-visible { outline: 2px solid var(--w-accent); outline-offset: 2px; }
+.sreset { background: none; border: 0; color: var(--w-accent); font: 600 12px inherit; font-family: inherit; cursor: pointer; padding: 6px; }
 .view::-webkit-scrollbar { display: none; }
 
 .rows { display: grid; gap: 4px; flex: 1; grid-auto-rows: minmax(40px, 1fr); }
@@ -131,8 +157,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 .evb svg { width: 16px; height: 16px; }
 .evb .evb.dark { color: var(--w-warn); }
 @keyframes nope { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
-.row.err { animation: nope 320ms ease-out; box-shadow: inset 0 0 0 1.5px var(--c-err); }
-@media (prefers-reduced-motion: reduce) { .row.err { animation: none; } }
+.row.err, .srow.err { animation: nope 320ms ease-out; box-shadow: inset 0 0 0 1.5px var(--c-err); }
+@media (prefers-reduced-motion: reduce) { .row.err, .srow.err { animation: none; } }
 .whint { position: absolute; left: 8%; right: 8%; bottom: 2%; font-size: 11px; color: var(--w-dim); text-align: center; pointer-events: none; text-shadow: 0 0 6px #000, 0 0 3px #000; }
 .watch-note { font-size: 13px; color: var(--muted); text-align: center; max-width: 36ch; margin: 0; }
 .legend .ringkey { display: inline-block; width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 2px var(--ok); vertical-align: middle; margin-right: 6px; }
@@ -198,7 +224,7 @@ svg.chart { display: block; width: 100%; min-width: 520px; height: auto; cursor:
           <div class="view" id="view"></div>
         </div>
       </div>
-      <p class="watch-note">Swipe or scroll a dial sideways to turn it. Tap a padlock to hold that setting, double tap a held dial to free it.</p>
+      <p class="watch-note">Swipe or scroll a dial sideways to turn it. Tap a padlock to hold that setting, double tap a held dial to free it. Scroll up or down, or tap the dots, for the Sun and Settings pages.</p>
     </div>
 
     <div class="side">
@@ -336,15 +362,17 @@ const LM = (() => {
     return `about ${Math.pow(2, Math.round(Math.log2(t / 60)))} min`;
   }
   // Balance: fIdx + k = 3 * EV100 + isoIdx - 6. Returns the free dial's new index and any leftover thirds.
-  function solve(dial, d, ev100v) {
+  const FULL = { shutter: [K_MIN, K_MAX], f: [0, APERTURES.length - 1], iso: [0, ISOS.length - 1] };
+  function solve(dial, d, ev100v, R = FULL) {
     const target = Math.round(3 * ev100v) + d.iso - 6;
-    if (dial === "shutter") { const want = target - d.f; const k = Math.max(K_MIN, Math.min(K_MAX, want)); return { v: k, off: want - k }; }
-    if (dial === "f") { const want = target - d.shutter; const f = Math.max(0, Math.min(APERTURES.length - 1, want)); return { v: f, off: want - f }; }
-    const want = d.f + d.shutter - Math.round(3 * ev100v) + 6; const i = Math.max(0, Math.min(ISOS.length - 1, want)); return { v: i, off: -(want - i) };
+    const clamp = (v, [lo, hi]) => Math.max(lo, Math.min(hi, v));
+    if (dial === "shutter") { const want = target - d.f; const k = clamp(want, R.shutter); return { v: k, off: want - k }; }
+    if (dial === "f") { const want = target - d.shutter; const f = clamp(want, R.f); return { v: f, off: want - f }; }
+    const want = d.f + d.shutter - Math.round(3 * ev100v) + 6; const i = clamp(want, R.iso); return { v: i, off: -(want - i) };
   }
   // Positive = settings let in more light than the sky calls for (overexposed), in thirds
   const offset = (d, ev100v) => Math.round(3 * ev100v) + d.iso - 6 - d.f - d.shutter;
-  return { meter, sinElev, ev100, cloud, noaa, sunEvents, LABELS, APERTURES, ISOS, K_MIN, K_MAX, shutterLabel, solve, offset, CIVIL };
+  return { meter, sinElev, ev100, cloud, noaa, sunEvents, LABELS, APERTURES, ISOS, K_MIN, K_MAX, shutterLabel, solve, offset, CIVIL, FULL };
 })();
 if (typeof module !== "undefined") module.exports = LM;
 </script>
@@ -354,8 +382,10 @@ const $ = id => document.getElementById(id);
 const svg = (body, vb = "0 0 24 24") => `<svg viewBox="${vb}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const ICON = {
   shutter: svg('<circle cx="12" cy="13" r="8"/><path d="M12 13V9M10 2h4M19 6l-1.5 1.5"/>'),
-  f: svg('<circle cx="12" cy="12" r="9"/><path d="M12 3l3 7M21 12l-7 2M16.5 20l-4-6M5 19.5l5-5.5M3.5 8l7 2.5M9.5 3.3L10 10"/>'),
-  iso: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><rect x="8" y="9" width="8" height="6" rx="1"/>'),
+  f: svg('<circle cx="12" cy="12" r="9"/><path d="M12 8.4L20.87 13.52M15.12 10.2L15.12 20.44M15.12 13.8L6.25 18.92M12 15.6L3.13 10.48M8.88 13.8L8.88 3.56M8.88 10.2L17.75 5.08"/>'),
+  iso: svg('<circle cx="4.5" cy="5" r="0.7" fill="currentColor" stroke="none"/><circle cx="4.5" cy="9.7" r="0.7" fill="currentColor" stroke="none"/><circle cx="4.5" cy="14.3" r="0.7" fill="currentColor" stroke="none"/><circle cx="4.5" cy="19" r="0.7" fill="currentColor" stroke="none"/><circle cx="9" cy="5" r="1.15" fill="currentColor" stroke="none"/><circle cx="9" cy="9.7" r="1.15" fill="currentColor" stroke="none"/><circle cx="9" cy="14.3" r="1.15" fill="currentColor" stroke="none"/><circle cx="9" cy="19" r="1.15" fill="currentColor" stroke="none"/><circle cx="13.5" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="13.5" cy="9.7" r="1.6" fill="currentColor" stroke="none"/><circle cx="13.5" cy="14.3" r="1.6" fill="currentColor" stroke="none"/><circle cx="13.5" cy="19" r="1.6" fill="currentColor" stroke="none"/><circle cx="18.5" cy="5" r="2.15" fill="currentColor" stroke="none"/><circle cx="18.5" cy="9.7" r="2.15" fill="currentColor" stroke="none"/><circle cx="18.5" cy="14.3" r="2.15" fill="currentColor" stroke="none"/><circle cx="18.5" cy="19" r="2.15" fill="currentColor" stroke="none"/>'),
+  gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
+  sunhalf: svg('<path d="M4 18h16M7 18a5 5 0 0 1 10 0M12 8V6M5.6 11.6L4.2 10.2M18.4 11.6l1.4-1.4"/>'),
   ev: svg('<path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17l4-6"/><circle cx="12" cy="17" r="1.2"/>'),
   lock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
   unlock: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>'),
@@ -420,8 +450,14 @@ const st = {
   mode: "man", lat: 42.37, lon: -71.95, tz: "America/New_York", date: "", time: 780,
   sky: "clear", live: null, wxNote: "", track: null, trackIdx: 0, follow: false,
   dials: { shutter: 0, f: 24, iso: 6 }, locks: { shutter: false, f: false, iso: true },
-  hint: "",
+  hint: "", limits: JSON.parse(JSON.stringify(LM.FULL)),
 };
+try {
+  const saved = JSON.parse(localStorage.getItem("lumetra-sim") || "null");
+  if (saved && saved.limits) for (const d of ["shutter", "f", "iso"]) if (Array.isArray(saved.limits[d])) st.limits[d] = saved.limits[d].map(Number);
+  if (saved && saved.locks) Object.assign(st.locks, saved.locks);
+} catch {}
+function save() { try { localStorage.setItem("lumetra-sim", JSON.stringify({ limits: st.limits, locks: st.locks })); } catch {} }
 
 const hhmm = m => { m = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
 const doyOf = s => { const d = new Date(s + "T12:00:00Z"); return Math.round((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1; };
@@ -466,11 +502,11 @@ function rebalance() {
   const c = ctx(); if (c.polar || c.dark) return;
   const free = ["shutter", "f", "iso"].find(d => !st.locks[d]);
   if (!free) return;
-  st.dials[free] = LM.solve(free, st.dials, sceneEV(c)).v;
+  st.dials[free] = LM.solve(free, st.dials, sceneEV(c), st.limits).v;
 }
 function turn(dial, delta) {
   const c = ctx();
-  const ranges = { shutter: [LM.K_MIN, LM.K_MAX], f: [0, LM.APERTURES.length - 1], iso: [0, LM.ISOS.length - 1] };
+  const ranges = st.limits;
   if (st.locks[dial]) { st.hint = "Locked. Tap the padlock to unlock."; return; }
   const next = st.dials[dial] + delta;
   if (next < ranges[dial][0] || next > ranges[dial][1]) { st.hint = "End of the dial."; return; }
@@ -478,7 +514,7 @@ function turn(dial, delta) {
   const follower = ["shutter", "f", "iso"].find(d => d !== dial && !st.locks[d]);
   if (!follower) { st.hint = "Unlock one more dial so this one can turn."; return; }
   const trial = { ...st.dials, [dial]: next };
-  const r = LM.solve(follower, trial, sceneEV(c));
+  const r = LM.solve(follower, trial, sceneEV(c), st.limits);
   if (r.off !== 0 && r.v === st.dials[follower]) { st.hint = `${label(follower)} is at the end of its range.`; return; }
   st.dials = { ...trial, [follower]: r.v }; st.hint = "";
 }
@@ -492,10 +528,10 @@ function thirds(n) {
 /* Watch */
 const DIALS = ["shutter", "f", "iso"];
 const IW = 58;
-const items = d => d === "shutter" ? Array.from({ length: LM.K_MAX - LM.K_MIN + 1 }, (_, i) => LM.shutterLabel(LM.K_MIN + i))
-  : d === "f" ? LM.APERTURES.map(a => "f/" + a) : LM.ISOS.slice();
-const toIdx = (d, v) => d === "shutter" ? v - LM.K_MIN : v;
-const fromIdx = (d, i) => d === "shutter" ? i + LM.K_MIN : i;
+const valText = (d, v) => d === "shutter" ? LM.shutterLabel(v) : d === "f" ? "f/" + LM.APERTURES[v] : LM.ISOS[v];
+const items = d => { const [lo, hi] = st.limits[d]; return Array.from({ length: hi - lo + 1 }, (_, i) => valText(d, lo + i)); };
+const toIdx = (d, v) => v - st.limits[d][0];
+const fromIdx = (d, i) => i + st.limits[d][0];
 const maxIdx = d => d === "sky" ? SKIES.length - 1 : items(d).length - 1;
 let hintTimer = null, lastDay = null, lastLive;
 
@@ -518,15 +554,25 @@ function skyHTML(isDay, liveId) {
 }
 function buildWatch() {
   const c = ctx(); lastDay = c.isDay; lastLive = liveSkyNow();
-  $("view").innerHTML = `<div class="rows">
+  $("view").innerHTML = `<section class="page" id="pg-0" aria-label="Meter"><div class="rows">
     ${DIALS.map(d => `<div class="row"><span class="ico ${d}">${ICON[d]}<small>${label(d)}</small></span>
       <div class="strip" id="s-${d}" data-d="${d}" tabindex="0" role="slider" aria-label="${label(d)}">${stripHTML(d)}</div>
       <button class="lock" id="l-${d}"></button></div>`).join("")}
     <div class="row"><span class="ico" id="sky-ico"></span>
       <div class="strip" id="s-sky" data-d="sky" tabindex="0" role="slider" aria-label="Sky">${skyHTML(c.isDay, lastLive)}</div><span></span></div>
-  </div><div class="whint" id="whint" aria-live="polite"></div>`;
+  </div><div class="whint" id="whint" aria-live="polite"></div></section>
+  <section class="page" id="pg-1" aria-label="Sun"><div class="dl" id="sundata"></div></section>
+  <section class="page" id="pg-2" aria-label="Settings"><div class="set" id="settings"></div></section>`;
+  if (!$("pdots")) {
+    const dots = document.createElement("div"); dots.className = "pdots"; dots.id = "pdots";
+    dots.innerHTML = ["Meter", "Sun", "Settings"].map((n, i) => `<button data-pg="${i}" aria-label="${n} page"></button>`).join("");
+    document.querySelector(".screen").appendChild(dots);
+    dots.querySelectorAll("button").forEach(b => b.onclick = () => $("view").scrollTo({ top: +b.dataset.pg * $("view").clientHeight, behavior: "smooth" }));
+    $("view").addEventListener("scroll", () => { syncPage(); }, { passive: true });
+  }
+  buildSettings();
   for (const d of [...DIALS, "sky"]) wireStrip($("s-" + d));
-  DIALS.forEach(d => $("l-" + d).onclick = () => { st.locks[d] = !st.locks[d]; renderAll(); });
+  DIALS.forEach(d => $("l-" + d).onclick = () => { st.locks[d] = !st.locks[d]; save(); renderAll(); });
   syncWatch(false);
 }
 function curIdx(d) { return d === "sky" ? SKIES.findIndex(s => s.id === st.sky) : toIdx(d, st.dials[d]); }
@@ -568,7 +614,7 @@ function wireStrip(el) {
   el.addEventListener("click", e => {
     if (d !== "sky" && st.locks[d]) {
       const now = Date.now();
-      if (now - lastTap < 350) { st.locks[d] = false; lastTap = 0; flash(""); renderAll(); }
+      if (now - lastTap < 350) { st.locks[d] = false; lastTap = 0; flash(""); save(); renderAll(); }
       else { lastTap = now; flash("Double tap to unlock"); }
       return;
     }
@@ -615,7 +661,92 @@ function syncWatch(smooth = true) {
     const e = sceneEV(c), off = LM.offset(st.dials, e);
     ev = `<span class="evb" title="Exposure value">${ICON.ev}EV ${(Math.round(e * 10) / 10).toFixed(1)}${off ? ` <span class="dev">${off > 0 ? "+" : "−"}${thirds(off)}</span>` : ""}</span>`;
   }
-  $("wleft").innerHTML = ev;
+  $("wleft").dataset.ev = ev;
+  renderSun(c);
+  syncPage();
+}
+let page = 0;
+function syncPage() {
+  const v = $("view"); page = Math.round(v.scrollTop / Math.max(1, v.clientHeight));
+  document.querySelectorAll("#pdots button").forEach((b, i) => b.setAttribute("aria-current", i === page));
+  $("wleft").innerHTML = page === 0 ? $("wleft").dataset.ev : page === 1 ? '<span class="evb tint-sun">' + ICON.sunhalf + 'Sun</span>' : '<span class="evb" style="color:var(--w-fg)">' + ICON.gear + 'Settings</span>';
+}
+
+/* Sun page: exact sun position for the place and date */
+function sunAt(m) {
+  const off = tzOffsetMin(st.tz, st.date), doy = doyOf(st.date);
+  const g = LM.noaa(st.lat, st.lon, doy, m - off);
+  const h = Math.asin(g.sinh) * 180 / Math.PI;
+  const la = st.lat * Math.PI / 180, ha = ((m - off + g.eq + 4 * st.lon) / 4 - 180) * Math.PI / 180;
+  const az = (Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(la) - Math.tan(g.d) * Math.cos(la)) * 180 / Math.PI + 180) % 360;
+  return { h, az };
+}
+function crossings(deg) {
+  const out = []; let prev = sunAt(0).h;
+  for (let m = 1; m <= 1440; m++) { const h = sunAt(m).h; if ((prev - deg) * (h - deg) < 0) out.push({ m, up: h > prev }); prev = h; }
+  return out;
+}
+const compass = a => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(a / 45) % 8];
+function renderSun(c) {
+  const el = $("sundata"); if (!el) return;
+  const key = [st.lat, st.lon, st.date, st.tz, st.time, st.sky, c.polar].join("|");
+  if (el.dataset.key === key) return; el.dataset.key = key;
+  const now = sunAt(st.time);
+  let noon = 0, max = -90;
+  for (let m = 0; m <= 1440; m += 2) { const h = sunAt(m).h; if (h > max) { max = h; noon = m; } }
+  const am = st.time < noon;
+  const pick = (deg, up) => (crossings(deg).find(x => x.up === up) || {}).m;
+  const span = (a, b) => a != null && b != null ? `${hhmm(Math.min(a, b))} to ${hhmm(Math.max(a, b))}` : "none";
+  const golden = am ? span(pick(-4, true), pick(6, true)) : span(pick(6, false), pick(-4, false));
+  const blue = am ? span(pick(-6, true), pick(-4, true)) : span(pick(-4, false), pick(-6, false));
+  const civil = am ? pick(-6, true) : pick(-6, false);
+  const len = c.polar ? (max > 0 ? "24 h" : "0 h") : (() => { const d = c.set - c.rise; return `${Math.floor(d / 60)} h ${String(Math.round(d % 60)).padStart(2, "0")} m`; })();
+  const rows = [
+    [SKY.sun, "Sunrise", c.polar ? "none" : hhmm(c.rise), "tint-sun"],
+    [SKY.moon, "Sunset", c.polar ? "none" : hhmm(c.set), "tint-moon"],
+    [ICON.sunhalf, "Solar noon", `${hhmm(noon)}, ${max.toFixed(0)}\u00b0`, "tint-sun"],
+    [SKY.sunsmall, am ? "Golden hour AM" : "Golden hour PM", golden, "tint-sun"],
+    [SKY.moonsmall, am ? "Blue hour AM" : "Blue hour PM", blue, "tint-wet"],
+    [SKY.moon, am ? "Civil dawn" : "Civil dusk", civil != null ? hhmm(civil) : "none", "tint-moon"],
+    [ICON.shutter, "Day length", len, "ico shutter"],
+    [ICON.f, "Sun now", `${now.h.toFixed(1)}\u00b0 ${compass(now.az)} ${now.az.toFixed(0)}\u00b0`, "ico f"],
+  ];
+  el.innerHTML = rows.map(([i, l, v, t]) => `<div><i class="${t}" style="display:grid">${i}</i><span>${l}</span><b>${v}</b></div>`).join("");
+}
+
+/* Settings page */
+const LIMIT_ROWS = [
+  ["shutter", 0, "Slowest shutter"], ["shutter", 1, "Fastest shutter"],
+  ["f", 0, "Widest aperture"], ["f", 1, "Narrowest aperture"],
+  ["iso", 0, "Lowest ISO"], ["iso", 1, "Highest ISO"],
+];
+function buildSettings() {
+  const el = $("settings");
+  el.innerHTML = `<div class="srow"><span>GPS</span><button class="tog" id="set-gps" role="switch" aria-checked="${st.mode === "gps"}" aria-label="GPS"></button></div>` +
+    LIMIT_ROWS.map(([d, end, name], i) => `<div class="srow"><span>${name}</span><div class="stp">
+      <button data-lim="${i}" data-dir="-1" aria-label="${name} down">&minus;</button><b id="lim-${i}"></b><button data-lim="${i}" data-dir="1" aria-label="${name} up">+</button></div></div>`).join("") +
+    `<button class="sreset" id="set-reset">Reset limits</button>`;
+  $("set-gps").onclick = () => {
+    if (st.mode === "gps") setMode("man"); else { setMode("gps"); $("use-here").click(); }
+    syncSettings();
+  };
+  el.querySelectorAll("[data-lim]").forEach(b => b.onclick = () => {
+    const [d, end] = LIMIT_ROWS[+b.dataset.lim], dir = +b.dataset.dir;
+    const lim = st.limits[d], full = LM.FULL[d], next = lim[end] + dir;
+    if (next < full[0] || next > full[1] || (end === 0 ? next > lim[1] : next < lim[0])) { b.closest(".srow").classList.remove("err"); void b.offsetWidth; b.closest(".srow").classList.add("err"); setTimeout(() => b.closest(".srow").classList.remove("err"), 340); return; }
+    lim[end] = next; applyLimits();
+  });
+  $("set-reset").onclick = () => { st.limits = JSON.parse(JSON.stringify(LM.FULL)); applyLimits(); };
+  syncSettings();
+}
+function syncSettings() {
+  if (!$("set-gps")) return;
+  $("set-gps").setAttribute("aria-checked", st.mode === "gps");
+  LIMIT_ROWS.forEach(([d, end], i) => { $("lim-" + i).textContent = valText(d, st.limits[d][end]); });
+}
+function applyLimits() {
+  for (const d of DIALS) { const [lo, hi] = st.limits[d]; st.dials[d] = Math.max(lo, Math.min(hi, st.dials[d])); $("s-" + d).innerHTML = stripHTML(d); }
+  save(); rebalance(); syncSettings(); syncWatch(false);
 }
 function renderWatch() { if (!$("s-shutter")) buildWatch(); else syncWatch(); }
 
@@ -717,7 +848,7 @@ function setMode(m) {
   $("m-gps").setAttribute("aria-pressed", m === "gps"); $("m-man").setAttribute("aria-pressed", m === "man");
   $("gps-pane").hidden = m !== "gps"; $("man-pane").hidden = m !== "man";
   if (m === "man") { st.follow = false; st.live = null; st.wxNote = ""; lastFetchKey = ""; }
-  changed();
+  changed(); if (typeof syncSettings === "function") syncSettings();
 }
 $("m-gps").onclick = () => setMode("gps");
 $("m-man").onclick = () => setMode("man");
